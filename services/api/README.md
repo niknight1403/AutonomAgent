@@ -8,7 +8,8 @@ The API is intentionally not wired to live marketplace providers yet.
 - Prisma schema for users, wallet accounts, immutable wallet ledger entries, idempotency keys, and outbox events.
 - Wallet reservation/release service using a PostgreSQL row lock and Serializable transaction.
 - Reservation references are unique; retries with the same reference and matching payload return the current snapshot.
-- Vitest checks for integer-cent profit calculations and risk-limit decisions.
+- Vitest checks for integer-cent profit calculations, risk-limit decisions, and bounded worker backoff.
+- PostgreSQL outbox worker with `SKIP LOCKED` leasing, expired-lease recovery, retry scheduling, and dead-letter state.
 
 ## Important boundaries
 
