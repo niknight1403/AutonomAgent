@@ -86,7 +86,7 @@ export async function saveTaskCheckpoint(
   return prisma.$transaction(async (tx) => {
     const changed = await tx.agentTask.updateMany({
       where: { id: taskId, status: "RUNNING", lockedBy: workerId, leaseUntil: { gt: new Date() } },
-      data: { status: "CHECKPOINTED", checkpoint, lockedBy: null, leaseUntil: null },
+      data: { checkpoint },
     });
     if (changed.count !== 1) throw new Error("TASK_LEASE_LOST");
     const task = await tx.agentTask.findUniqueOrThrow({ where: { id: taskId } });
@@ -114,7 +114,7 @@ export async function failAgentTask(prisma: PrismaClient, taskId: string, worker
   return prisma.$transaction(async (tx) => {
     const detail = (error instanceof Error ? error.message : "Unknown task error").slice(0, 2000);
     const changed = await tx.agentTask.updateMany({
-      where: { id: taskId, status: "RUNNING", lockedBy: workerId },
+      where: { id: taskId, status: "RUNNING", lockedBy: workerId, leaseUntil: { gt: new Date() } },
       data: { status: "FAILED", lastError: detail, lockedBy: null, leaseUntil: null, finishedAt: new Date() },
     });
     if (changed.count !== 1) throw new Error("TASK_LEASE_LOST");
