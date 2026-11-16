@@ -2,10 +2,22 @@
 
 The API is intentionally not wired to live marketplace providers yet.
 
-Required before implementation can enable trading:
+## Implemented foundation
+
+- Fastify health service with fail-closed configuration.
+- Prisma schema for users, wallet accounts, immutable wallet ledger entries, idempotency keys, and outbox events.
+- Wallet reservation/release service using a PostgreSQL row lock and Serializable transaction.
+- Reservation references are unique; retries with the same reference and matching payload return the current snapshot.
+- Vitest checks for integer-cent profit calculations and risk-limit decisions.
+
+## Important boundaries
+
+Wallet functions are internal service primitives, not public routes. They must only be called after authenticated server-side authorization. A release reference must be distinct from its reservation reference. A production execution flow still needs to bind each reservation to an approved trade and enforce per-trade/category/provider limits.
+
+Required before live trading:
 - authenticated sessions and server-enforced RBAC;
 - server-side secrets vault and provider-specific capability registry;
-- immutable double-entry wallet ledger and atomic reservations;
+- complete double-entry accounting for deposits, purchases, fees, sales, payouts, and refunds;
 - idempotent execution attempts, durable workers, transactional outbox;
 - approval snapshots bound to current price, stock, fees, and expiry;
 - server-side emergency stop and reconciliation for unknown order/payment states.
