@@ -91,11 +91,12 @@ export type ReleaseFundsInput = {
   accountId: string;
   amountCents: bigint;
   referenceId: string;
+  reservationReferenceId: string;
   correlationId?: string;
   description: string;
 };
 
-/** Releases a prior reservation; unique referenceId makes retries idempotent. */
+/** Releases a prior reservation; the source reservation must be identified explicitly. unique referenceId makes retries idempotent. */
 export async function releaseFunds(
   prisma: PrismaClient,
   input: ReleaseFundsInput,
@@ -119,6 +120,14 @@ export async function releaseFunds(
       return snapshot(tx, input.accountId);
     }
 
+    const originalReservation = await tx.walletLedger.findUnique({
+      where: { referenceId: input.reservationReferenceId },
+    });
+    if (!originalReservation || originalReservation.accountId !== input.accountId ||
+        originalReservation.entryType !== "RESERVATION" ||
+        originalReservation.amountCents !== input.amountCents) {
+      throw new Error("ORIGINAL_RESERVATION_NOT_FOUND_OR_MISMATCHED");
+    }
     const account = await tx.walletAccount.findUnique({ where: { id: input.accountId } });
     if (!account) throw new Error("WALLET_NOT_FOUND");
     if (account.reservedCents < input.amountCents) throw new Error("RESERVATION_BALANCE_TOO_LOW");
