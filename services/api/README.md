@@ -10,6 +10,7 @@ The API is intentionally not wired to live marketplace providers yet.
 - Reservation references are unique; retries with the same reference and matching payload return the current snapshot.
 - Vitest checks for integer-cent profit calculations, risk-limit decisions, and bounded worker backoff.
 - PostgreSQL outbox worker with `SKIP LOCKED` leasing, expired-lease recovery, retry scheduling, and dead-letter state.
+- Agent task lifecycle service with idempotent creation, compare-and-set worker claims, lease-bound checkpoints/completion/failure, and transactional outbox events.
 
 ## Important boundaries
 
