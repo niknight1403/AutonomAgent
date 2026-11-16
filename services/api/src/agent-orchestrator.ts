@@ -46,10 +46,10 @@ export async function listClaimableTaskIds(prisma: PrismaClient, limit = 20): Pr
       ],
     },
     orderBy: { createdAt: "asc" },
-    take: Math.max(1, Math.min(100, limit)),
-    select: { id: true },
+    take: Math.max(1, Math.min(100, limit * 2)),
+    select: { id: true, attempt: true, maxAttempts: true },
   });
-  return tasks.map((task) => task.id);
+  return tasks.filter((task) => task.attempt < task.maxAttempts).slice(0, limit).map((task) => task.id);
 }
 
 async function executeTask(
