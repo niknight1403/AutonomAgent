@@ -1,0 +1,19 @@
+{
+  "name": "autonomagent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android-first controlled product arbitrage workspace",
+  "workspaces": [
+    "apps/mobile",
+    "packages/trading-core"
+  ],
+  "scripts": {
+    "mobile": "npm run start --workspace @autonomagent/mobile",
+    "android": "npm run android --workspace @autonomagent/mobile",
+    "typecheck:": "echo Configure workspace typechecks before release",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
