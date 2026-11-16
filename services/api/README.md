@@ -11,6 +11,7 @@ The API is intentionally not wired to live marketplace providers yet.
 - Vitest checks for integer-cent profit calculations, risk-limit decisions, and bounded worker backoff.
 - PostgreSQL outbox worker with `SKIP LOCKED` leasing, expired-lease recovery, retry scheduling, and dead-letter state.
 - Agent task lifecycle service with idempotent creation, compare-and-set worker claims, lease-bound checkpoints/completion/failure, and transactional outbox events.
+- Bounded agent orchestrator with configurable concurrency, polling, per-claim fencing IDs, periodic lease heartbeats, and graceful AbortSignal shutdown.
 
 ## Important boundaries
 
