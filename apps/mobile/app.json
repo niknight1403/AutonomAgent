@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "AutonomAgent",
+    "slug": "autonomagent",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "android": {
+      "package": "com.autonomagent.trader",
+      "versionCode": 1
+    },
+    "extra": {
+      "tradingMode": "PAPER",
+      "liveTradingEnabled": false
+    }
+  }
+}
