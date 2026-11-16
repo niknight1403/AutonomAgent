@@ -5,6 +5,7 @@
   "description": "Android-first controlled product arbitrage workspace",
   "workspaces": [
     "apps/mobile",
+    "services/api",
     "packages/trading-core"
   ],
   "scripts": {
