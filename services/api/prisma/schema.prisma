@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum LedgerEntryType {
+  DEPOSIT
+  RESERVATION
+  RESERVATION_RELEASE
+  PURCHASE
+  MARKETPLACE_FEE
+  SHIPPING
+  SALE_SETTLEMENT
+  REFUND
+  ADJUSTMENT
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PUBLISHED
+  DEAD_LETTER
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(VIEWER)
+  disabledAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model WalletAccount {
+  id                String         @id @default(cuid())
+  ownerId           String
+  currency          String         @default("EUR")
+  balanceCents      BigInt         @default(0)
+  reservedCents     BigInt         @default(0)
+  version           Int            @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  ledgerEntries     WalletLedger[]
+
+  @@unique([ownerId, currency])
+}
+
+model WalletLedger {
+  id            String          @id @default(cuid())
+  accountId     String
+  account       WalletAccount   @relation(fields: [accountId], references: [id])
+  entryType     LedgerEntryType
+  amountCents   BigInt
+  referenceId   String          @unique
+  correlationId String?
+  description   String
+  createdAt     DateTime        @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([correlationId])
+}
+
+model OutboxEvent {
+  id            String       @id @default(cuid())
+  eventType     String
+  aggregateId   String
+  correlationId String?
+  schemaVersion Int          @default(1)
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  availableAt   DateTime     @default(now())
+  leaseUntil    DateTime?
+  lockedBy      String?
+  lastError     String?
+  publishedAt   DateTime?
+  createdAt     DateTime     @default(now())
+
+  @@index([status, availableAt])
+  @@index([leaseUntil])
+}
+
+model IdempotencyKey {
+  id          String   @id @default(cuid())
+  scope       String
+  key         String
+  requestHash String
+  response    Json?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+}
