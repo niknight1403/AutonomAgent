@@ -1,4 +1,4 @@
-import { calculateNetProfit, evaluateRisk, type ProfitInput, type RiskLimits } from "./index";
+import { calculateNetProfit, evaluateRisk, type ProfitInput, type RiskLimits } from "./index.js";
 
 export interface DealProduct {
   providerId: string;
@@ -165,4 +165,3 @@ export async function scanProviderDeals(
   }
   return analyzeDeals(products, request.costs, request.context);
 }
-

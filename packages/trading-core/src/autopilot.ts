@@ -1,5 +1,5 @@
-import { calculateNetProfit, evaluateRisk } from "./index";
-import type { ProfitInput, RiskLimits } from "./index";
+import { calculateNetProfit, evaluateRisk } from "./index.js";
+import type { ProfitInput, RiskLimits } from "./index.js";
 
 export type DemoChannel = "MARKETPLACE" | "OWN_STORE" | "SOCIAL";
 export type AssessmentStatus = "RECOMMENDED_FOR_REVIEW" | "NEEDS_REVIEW";
