@@ -28,6 +28,12 @@ describe("ProviderHttpClient", () => {
       allowedHosts: ["api.vendor.example"],
     });
     await expect(client.getJson("/admin/secrets")).rejects.toThrow(/escaped/);
+
+    const prefixBypass = new ProviderHttpClient({
+      baseUrl: "https://api.vendor.example/v1",
+      allowedHosts: ["api.vendor.example"],
+    });
+    await expect(prefixBypass.getJson("/v1-evil/secret")).rejects.toThrow(/escaped/);
   });
 
   it("sends server-side bearer credentials and parses JSON", async () => {
@@ -60,6 +66,18 @@ describe("ProviderHttpClient", () => {
       allowedHosts: ["api.vendor.example"],
       maxResponseBytes: 3,
     });
+    await expect(smallLimit.getJson("items")).rejects.toThrow(/size limit/);
+
+    const streamedBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"payload":"too large"}'));
+        controller.close();
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(streamedBody, {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })));
     await expect(smallLimit.getJson("items")).rejects.toThrow(/size limit/);
 
     vi.stubGlobal("fetch", vi.fn(async () => new Response("ok", {
