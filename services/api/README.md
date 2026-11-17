@@ -87,9 +87,9 @@ This pipeline is currently a reusable core function, not an HTTP endpoint. The A
 
 The Prisma schema and SQL migration add `DealCandidate`, uniquely keyed by provider plus external product ID. `persistDealCandidates` upserts batches of up to 100 observations in a serializable transaction. Every new observation resets its review state to `DISCOVERED` and clears prior reviewer metadata so an old review cannot silently carry over to changed prices or risk assumptions.
 
-`listDealCandidates` supports status/risk filters and a bounded result count. `reviewDealCandidate` is an internal primitive that must only be called after authenticated ADMIN authorization; it rejects approval of simulated or risk-failing records and uses a compare-and-set update to prevent concurrent review races. An APPROVED label is only a human review outcome: it does not authorize or execute a purchase. No public HTTP route is wired yet.
+`listDealCandidates` supports status/risk filters and a bounded result count. `reviewDealCandidate` is an internal primitive that must only be called after authenticated ADMIN authorization; it rejects approval of simulated or risk-failing records and uses a compare-and-set update to prevent concurrent review races. An APPROVED label is only a human review outcome: it does not authorize or execute a purchase.
 
-Migration `20261117000000_deal_candidates` is committed but has **not** been applied to a database. Run Prisma migration deployment only after reviewing the migration and confirming the target database.
+Migration `20261117014300_deal_candidates` adds this table and runs after `20261117013700_initial_schema`. Run Prisma migration deployment only after reviewing the migration and confirming the target database. Development databases created before the migration reordering must be reset.
 
 
 ### API deal-scan composition
@@ -119,3 +119,20 @@ This is an authentication primitive only. There is deliberately no login/token-i
 The Prisma `RefreshSession` model and migration `20261117010000_auth_sessions` are committed. The migration has **not** been applied. Passwords must be at least 12 and no more than 128 UTF-8 bytes. Existing user creation and initial ADMIN bootstrap are intentionally not exposed; provision the first administrator through a controlled out-of-band process. Never make public self-registration assign ADMIN.
 
 These are internal service primitives only. No login, refresh, logout, or deal-review HTTP routes are wired to Fastify yet. Before exposing them, add strict request schemas, TLS-only deployment, login rate limiting and abuse controls, CSRF protection if cookies are used, key rotation strategy, security audit events, and operational session cleanup. Keep refresh tokens out of logs and browser local storage; mobile clients should use platform secure storage. The API must receive the signing secret from its deployment secret manager. The added unit tests have not been executed here.
+
+### Authenticated HTTP routes (RBAC)
+
+`src/app.ts` exports `buildServer`, which `src/server.ts` starts; tests drive the same instance through `app.inject()`.
+
+| Route | Authorization | Behavior |
+| --- | --- | --- |
+| `GET /health` | public | Service and safety flags, `tradingReady: false` |
+| `POST /v1/auth/login` | public | Issues an HS256 access token (15 min) plus a rotating refresh token (30 days) |
+| `POST /v1/auth/refresh` | refresh token | One-time rotation; reuse of a rotated token returns 401 |
+| `POST /v1/auth/logout` | refresh token | Revokes the presented refresh session, 204 |
+| `GET /v1/deals` | any authenticated role | Review queue with `reviewStatus`, `riskPassed` and `limit` (1..100) filters |
+| `POST /v1/deals/:dealId/review` | ADMIN only | `APPROVED`, `REJECTED` or `ARCHIVED`; 422 for simulated or risk-failing approval, 409 on a concurrent or repeated decision |
+
+Access control is enforced per request: `authenticateBearerToken` verifies the signature and then reloads the user's role and `disabledAt` from PostgreSQL, so a role change or a disabled account takes effect without waiting for the token to expire. Cent amounts are serialized as strings to keep them JSON-safe.
+
+The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login has no additional rate limiting beyond the constant-time dummy-hash comparison, so a public deployment needs a reverse-proxy or gateway throttle.
