@@ -17,7 +17,7 @@ function adapter(overrides: Partial<ProviderAdapter> = {}): ProviderAdapter {
     capabilities: ["PRODUCT_SEARCH"],
     simulated: true,
     healthCheck: vi.fn(async () => ({
-      status: "HEALTHY",
+      status: "HEALTHY" as const,
       checkedAt: new Date(0).toISOString(),
     })),
     searchProducts: vi.fn(async () => []),
