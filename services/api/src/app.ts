@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } from "./auth-service.js";
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
-import { listAuditEvents } from "./audit-service.js";
+import { listAuditEvents, writeAuditEvent } from "./audit-service.js";
 
 const AUTH_RATE_WINDOW_MS = 60_000;
 const AUTH_RATE_MAX = 5;
@@ -163,8 +163,25 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
         signingSecret(),
         now(),
       );
+      await writeAuditEvent(prisma, {
+        action: "AUTH_LOGIN",
+        outcome: "SUCCESS",
+        requestId: request.id,
+        metadata: { emailDomain: body.email.split("@").at(-1)?.toLowerCase() ?? "unknown" },
+      });
       return reply.code(200).send(tokens);
     } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
+        try {
+          await writeAuditEvent(prisma, {
+            action: "AUTH_LOGIN",
+            outcome: "FAILURE",
+            requestId: request.id,
+          });
+        } catch (auditError) {
+          request.log.error({ err: auditError }, "failed to record authentication audit event");
+        }
+      }
       return fail(reply, error);
     }
   });
@@ -193,6 +210,11 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     }
     try {
       await revokeRefreshToken(prisma, body.refreshToken, now());
+      await writeAuditEvent(prisma, {
+        action: "AUTH_LOGOUT",
+        outcome: "SUCCESS",
+        requestId: request.id,
+      });
       return reply.code(204).send();
     } catch (error) {
       return fail(reply, error);
