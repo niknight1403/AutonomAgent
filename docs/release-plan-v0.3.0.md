@@ -31,7 +31,7 @@ Der Standardmodus bleibt `PAPER`. `testnetEnabled` bleibt standardmäßig `false
 |---:|---|---|---|
 | 49 | Versionierte `TESTNET`-Runtime-Konfiguration mit exakter Host-, Account- und Environment-Bindung | Produktionshost, URL-Credentials, Wildcards und unvollständige Konfiguration werden abgelehnt; Default bleibt deaktiviert | v0.2.0 |
 | 50 | Egress-Allowlist und Provider-Capability-Matrix | Nur HTTPS, erlaubte Hostnames, kein Redirect; read-only Capabilities sind getrennt von Mutation | 49 |
-| 51 | Provider-Contract für Health, Instrumente, Orders, Fills und Salden | aufgezeichnete Fixtures werden schema-validiert; unbekannte Felder/Status fail-closed behandelt | 50 |
+| 51 | Live-Monitoring und dedupliziertes Telegram-/Discord-Alerting | Kill-Switch, UNKNOWN-Orders, Reconciliation, Providerzustand und Drawdown erzeugen sichere Alerts; Kanäle bleiben standardmäßig deaktiviert | 50 |
 | 52 | Secret-Manager-Runtime und Credential-Redaction | Secrets kommen ausschließlich aus Server-Runtime; Logs, Traces, Errors und Responses enthalten keine Secrets | 49–51 |
 | 53 | Persistenter Kill-Switch-Service mit CAS-Versionierung | globaler, Provider-, Account- und Strategie-Stop; Cache-/DB-Fehler führen zu Blockierung; Reset niemals automatisch | 49, Prisma-Basis |
 | 54 | Approval Snapshot und Order-Intent-Service | Payload-Hash, Ablauf, Preis-/Mengenbindung, Idempotency-Key und `UNKNOWN`-Zustand sind transaktional persistiert | 53 |
