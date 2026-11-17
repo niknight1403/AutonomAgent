@@ -110,3 +110,57 @@ export function analyzeDeals(
     };
   });
 }
+
+export interface DealSearchProvider {
+  readonly providerId: string;
+  readonly capabilities: readonly string[];
+  searchProducts?: (request: {
+    query: string;
+    limit: number;
+    currency: string;
+  }, signal?: AbortSignal) => Promise<readonly DealProduct[]>;
+}
+
+export interface ProviderDealScanRequest {
+  query: string;
+  limit: number;
+  currency: string;
+  costs: DealCostProfile;
+  context: DealScanContext;
+}
+
+/**
+ * Runs the read-only provider search and then analyzes exactly those returned
+ * records. No fallback/demo products are fabricated when the provider is absent
+ * or fails. Purchase and listing operations are intentionally not part of this API.
+ */
+export async function scanProviderDeals(
+  provider: DealSearchProvider,
+  request: ProviderDealScanRequest,
+  signal?: AbortSignal,
+): Promise<DealAnalysis[]> {
+  if (!provider.capabilities.includes("PRODUCT_SEARCH") || typeof provider.searchProducts !== "function") {
+    throw new Error(`Provider "${provider.providerId}" does not support PRODUCT_SEARCH`);
+  }
+  const query = request.query.trim();
+  if (!query || query.length > 200) throw new Error("Product query must contain 1-200 characters");
+  if (!Number.isInteger(request.limit) || request.limit < 1 || request.limit > 50) {
+    throw new Error("Product search limit must be between 1 and 50");
+  }
+  if (request.currency !== "EUR") {
+    throw new Error("Deal scan currently requires EUR; currency conversion is not implemented");
+  }
+  if (signal?.aborted) throw signal.reason ?? new Error("Deal scan aborted");
+
+  const products = await provider.searchProducts({
+    query,
+    limit: request.limit,
+    currency: request.currency,
+  }, signal);
+  if (signal?.aborted) throw signal.reason ?? new Error("Deal scan aborted");
+  if (products.length > request.limit) {
+    throw new Error("Provider returned more products than requested");
+  }
+  return analyzeDeals(products, request.costs, request.context);
+}
+
