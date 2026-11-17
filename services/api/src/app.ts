@@ -8,6 +8,9 @@ import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./aut
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
 import { listAuditEvents, writeAuditEvent } from "./audit-service.js";
 import { InMemoryAuthRateLimiter, RedisRestAuthRateLimiter } from "./auth-rate-limit.js";
+import { runAndPersistDealScan } from "./deal-scan-service.js";
+import { createConfiguredProviderRegistry } from "./providers/bootstrap.js";
+import type { ProviderRegistry } from "./providers/registry.js";
 
 
 export interface ServerDependencies {
@@ -15,6 +18,7 @@ export interface ServerDependencies {
   /** HS256 signing secret for access tokens; unset means the auth routes stay closed. */
   authSigningSecret?: string | undefined;
   now?: () => Date;
+  providers?: ProviderRegistry;
 }
 
 type ReviewDecision = "APPROVED" | "REJECTED" | "ARCHIVED";
@@ -42,6 +46,8 @@ const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   DEAL_LIST_LIMIT_INVALID: 400,
   AUDIT_LIST_LIMIT_INVALID: 400,
   AUDIT_CURSOR_INVALID: 400,
+  DEAL_SCAN_INPUT_INVALID: 400,
+  DEAL_PROVIDER_UNAVAILABLE: 503,
 });
 
 /** BigInt cents and Date values are normalised so the payload stays JSON-safe. */
@@ -75,6 +81,7 @@ function errorCode(error: unknown): string {
 
 export async function buildServer(dependencies: ServerDependencies): Promise<FastifyInstance> {
   const { prisma } = dependencies;
+  const providers = dependencies.providers ?? createConfiguredProviderRegistry();
   const now = dependencies.now ?? (() => new Date());
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
@@ -263,6 +270,112 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
       });
       return reply.code(200).send({ deals: deals.map(serializeDeal) });
     } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
+  app.get("/v1/admin/providers", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      return reply.code(200).send({
+        providers: providers.list().map((provider) => ({
+          providerId: provider.providerId,
+          displayName: provider.displayName,
+          capabilities: provider.capabilities,
+          simulated: provider.simulated,
+        })),
+      });
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
+  app.post("/v1/admin/deals/scan", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      const body = request.body as Record<string, unknown> | undefined;
+      const allowed = new Set([
+        "providerId", "query", "limit", "resalePriceCents", "costs",
+        "openTrades", "dailyLossCents", "riskLimits",
+      ]);
+      if (!body || Object.keys(body).some((key) => !allowed.has(key))) {
+        return reply.code(400).send({ error: "DEAL_SCAN_INPUT_INVALID" });
+      }
+      const parseCents = (value: unknown): bigint | null => {
+        if (typeof value !== "string" || !/^\d{1,15}$/.test(value)) return null;
+        try { return BigInt(value); } catch { return null; }
+      };
+      const costsInput = body.costs as Record<string, unknown> | undefined;
+      const costKeys = [
+        "inboundShippingCents", "outboundShippingCents", "marketplaceFeeCents",
+        "paymentFeeCents", "packagingCents", "riskReserveCents",
+      ] as const;
+      if (
+        typeof body.providerId !== "string" || !/^[a-z0-9][a-z0-9._-]{1,63}$/.test(body.providerId) ||
+        typeof body.query !== "string" || !body.query.trim() || body.query.length > 200 ||
+        !Number.isInteger(body.limit) || Number(body.limit) < 1 || Number(body.limit) > 50 ||
+        typeof body.openTrades !== "number" || !Number.isInteger(body.openTrades) || body.openTrades < 0 ||
+        parseCents(body.resalePriceCents) === null || parseCents(body.dailyLossCents) === null ||
+        !costsInput || Object.keys(costsInput).length !== costKeys.length ||
+        costKeys.some((key) => parseCents(costsInput[key]) === null)
+      ) {
+        return reply.code(400).send({ error: "DEAL_SCAN_INPUT_INVALID" });
+      }
+      const risk = body.riskLimits as Record<string, unknown> | undefined;
+      const riskKeys = ["maxTradeCents", "maxOpenTrades", "maxDailyLossCents", "minProfitCents", "minRoiBasisPoints"] as const;
+      if (!risk || Object.keys(risk).length !== riskKeys.length ||
+          riskKeys.some((key) => key.endsWith("Cents") || key === "minRoiBasisPoints" ? parseCents(risk[key]) === null : typeof risk[key] !== "number" || !Number.isInteger(risk[key]) || Number(risk[key]) < 1)) {
+        return reply.code(400).send({ error: "DEAL_SCAN_INPUT_INVALID" });
+      }
+
+      const result = await runAndPersistDealScan({ prisma, providers }, {
+        providerId: body.providerId,
+        query: body.query,
+        limit: Number(body.limit),
+        currency: "EUR",
+        costs: {
+          inboundShippingCents: parseCents(costsInput.inboundShippingCents)!,
+          outboundShippingCents: parseCents(costsInput.outboundShippingCents)!,
+          marketplaceFeeCents: parseCents(costsInput.marketplaceFeeCents)!,
+          paymentFeeCents: parseCents(costsInput.paymentFeeCents)!,
+          packagingCents: parseCents(costsInput.packagingCents)!,
+          riskReserveCents: parseCents(costsInput.riskReserveCents)!,
+        },
+        context: {
+          resalePriceCents: parseCents(body.resalePriceCents)!,
+          openTrades: body.openTrades,
+          dailyLossCents: parseCents(body.dailyLossCents)!,
+          riskLimits: {
+            maxTradeCents: parseCents(risk.maxTradeCents)!,
+            maxOpenTrades: Number(risk.maxOpenTrades),
+            maxDailyLossCents: parseCents(risk.maxDailyLossCents)!,
+            minProfitCents: parseCents(risk.minProfitCents)!,
+            minRoiBasisPoints: parseCents(risk.minRoiBasisPoints)!,
+          },
+        },
+      });
+      await writeAuditEvent(prisma, {
+        actorUserId: principal.userId,
+        action: "DEAL_SCAN",
+        outcome: "SUCCESS",
+        requestId: request.id,
+        metadata: {
+          providerId: result.providerId,
+          providerSimulated: result.providerSimulated,
+          scannedCount: result.scannedCount,
+          persistedCount: result.persistedCount,
+          riskPassedCount: result.riskPassedCount,
+          simulatedCount: result.simulatedCount,
+        },
+      });
+      return reply.code(200).send(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("not registered") || message.includes("does not support")) {
+        return reply.code(503).send({ error: "DEAL_PROVIDER_UNAVAILABLE" });
+      }
       return fail(reply, error);
     }
   });
