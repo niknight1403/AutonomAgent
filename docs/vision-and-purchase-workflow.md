@@ -73,3 +73,14 @@ A future provider adapter must be explicitly registered with narrow capabilities
 8. Require manual confirmation before sending a binding offer or initiating payment unless the administrator has separately enabled a narrowly scoped, capped automation policy.
 
 Unknown provider outcomes must be reconciled; never blindly retry a purchase or message. No live provider, purchase endpoint, payment flow, or automated seller contact is enabled by this document.
+
+
+## Android Vision client
+
+The Expo dashboard now signs in against the Fastify API, lists persisted product candidates, accepts a HTTPS image URL per candidate, queues an ADMIN-only specialist analysis, and polls the durable task status. The UI renders specialist status, score, valuation evidence, conflicts, and next actions. Configure `EXPO_PUBLIC_API_URL` at build time. This variable is only the public API origin; never place credentials or provider keys in Expo public variables.
+
+The current client expects an ADMIN account for enqueueing. A VIEWER or OPERATOR can authenticate but will receive the server's authorization error when trying to start a specialist analysis.
+
+## Release readiness
+
+A green CI run verifies code, Prisma migrations, API tests, Python tests, dependency audit, and the Expo Android JavaScript export. It does not create a signed APK/AAB, provision production secrets, deploy the API/database/worker, configure an approved marketplace sold-data provider, or publish a production release. Those remain separate deployment and distribution gates.
