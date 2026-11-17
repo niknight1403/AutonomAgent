@@ -147,9 +147,10 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   }));
 
   app.post("/v1/auth/login", async (request, reply) => {
+    reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
     if (!authRateLimit(request, reply)) return;
     const body = request.body as { email?: unknown; password?: unknown } | undefined;
-    if (typeof body?.email !== "string" || !body.email.trim() || body.email.length > 254 || typeof body.password !== "string" || Buffer.byteLength(body.password, "utf8") > 128) {
+    if (!body || Object.keys(body).some((key) => key !== "email" && key !== "password") || typeof body.email !== "string" || !body.email.trim() || body.email.length > 254 || typeof body.password !== "string" || Buffer.byteLength(body.password, "utf8") > 128) {
       return reply.code(400).send({ error: "LOGIN_FIELDS_REQUIRED" });
     }
     try {
@@ -166,9 +167,10 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   });
 
   app.post("/v1/auth/refresh", async (request, reply) => {
+    reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
     if (!authRateLimit(request, reply)) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
-    if (typeof body?.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
+    if (!body || Object.keys(body).some((key) => key !== "refreshToken") || typeof body.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
     }
     try {
@@ -180,9 +182,10 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   });
 
   app.post("/v1/auth/logout", async (request, reply) => {
+    reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
     if (!authRateLimit(request, reply)) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
-    if (typeof body?.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
+    if (!body || Object.keys(body).some((key) => key !== "refreshToken") || typeof body.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
     }
     try {
@@ -233,7 +236,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
       requireAdmin(principal);
       const { dealId } = request.params as { dealId: string };
       const body = request.body as { decision?: unknown } | undefined;
-      if (typeof body?.decision !== "string" || !REVIEW_DECISIONS.includes(body.decision as ReviewDecision)) {
+      if (!body || Object.keys(body).some((key) => key !== "decision") || typeof body.decision !== "string" || !REVIEW_DECISIONS.includes(body.decision as ReviewDecision)) {
         return reply.code(400).send({ error: "DEAL_REVIEW_DECISION_INVALID" });
       }
       const reviewed = await reviewDealCandidate(prisma, {
