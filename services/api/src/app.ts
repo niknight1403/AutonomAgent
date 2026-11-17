@@ -326,13 +326,13 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
       const risk = body.riskLimits as Record<string, unknown> | undefined;
       const riskKeys = ["maxTradeCents", "maxOpenTrades", "maxDailyLossCents", "minProfitCents", "minRoiBasisPoints"] as const;
       if (!risk || Object.keys(risk).length !== riskKeys.length ||
-          riskKeys.some((key) => key.endsWith("Cents") || key === "minRoiBasisPoints" ? parseCents(risk[key]) === null : typeof risk[key] !== "number" || !Number.isInteger(risk[key]) || Number(risk[key]) < 1)) {
+          riskKeys.some((key) => key.endsWith("Cents") || key === "minRoiBasisPoints" ? parseCents(risk[key]) === null : typeof risk[key] !== "number" || !Number.isInteger(risk[key]) || Number(risk[key]) < 1 || Number(risk[key]) > 1_000)) {
         return reply.code(400).send({ error: "DEAL_SCAN_INPUT_INVALID" });
       }
 
       const result = await runAndPersistDealScan({ prisma, providers }, {
-        providerId: body.providerId,
-        query: body.query,
+        providerId: body.providerId as string,
+        query: body.query as string,
         limit: Number(body.limit),
         currency: "EUR",
         costs: {
@@ -345,7 +345,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
         },
         context: {
           resalePriceCents: parseCents(body.resalePriceCents)!,
-          openTrades: body.openTrades,
+          openTrades: Number(body.openTrades),
           dailyLossCents: parseCents(body.dailyLossCents)!,
           riskLimits: {
             maxTradeCents: parseCents(risk.maxTradeCents)!,
