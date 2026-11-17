@@ -7,6 +7,10 @@ import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } fr
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
 
+const AUTH_RATE_WINDOW_MS = 60_000;
+const AUTH_RATE_MAX = 5;
+const AUTH_RATE_BUCKET_LIMIT = 10_000;
+
 export interface ServerDependencies {
   prisma: PrismaClient;
   /** HS256 signing secret for access tokens; unset means the auth routes stay closed. */
@@ -70,7 +74,39 @@ function errorCode(error: unknown): string {
 export async function buildServer(dependencies: ServerDependencies): Promise<FastifyInstance> {
   const { prisma } = dependencies;
   const now = dependencies.now ?? (() => new Date());
-  const app = Fastify({ logger: process.env.NODE_ENV !== "test", requestIdHeader: "x-request-id" });
+  const app = Fastify({
+    logger: process.env.NODE_ENV !== "test",
+    requestIdHeader: "x-request-id",
+    bodyLimit: 16 * 1024,
+    trustProxy: false,
+  });
+  const authRateBuckets = new Map<string, { windowStartedAt: number; count: number }>();
+
+  function authRateLimit(request: FastifyRequest, reply: FastifyReply): boolean {
+    const timestamp = now().getTime();
+    const key = `${request.ip}:${request.routeOptions.url ?? request.url.split("?")[0]}`;
+    let bucket = authRateBuckets.get(key);
+    if (!bucket || timestamp - bucket.windowStartedAt >= AUTH_RATE_WINDOW_MS) {
+      if (authRateBuckets.size >= AUTH_RATE_BUCKET_LIMIT) {
+        for (const [candidate, value] of authRateBuckets) {
+          if (timestamp - value.windowStartedAt >= AUTH_RATE_WINDOW_MS) authRateBuckets.delete(candidate);
+        }
+      }
+      if (authRateBuckets.size >= AUTH_RATE_BUCKET_LIMIT) {
+        reply.header("Retry-After", "60").code(429).send({ error: "AUTH_RATE_LIMITED" });
+        return false;
+      }
+      bucket = { windowStartedAt: timestamp, count: 0 };
+      authRateBuckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > AUTH_RATE_MAX) {
+      const retrySeconds = Math.max(1, Math.ceil((AUTH_RATE_WINDOW_MS - (timestamp - bucket.windowStartedAt)) / 1000));
+      reply.header("Retry-After", String(retrySeconds)).code(429).send({ error: "AUTH_RATE_LIMITED" });
+      return false;
+    }
+    return true;
+  }
 
   await app.register(helmet);
   await app.register(cors, { origin: false });
@@ -111,8 +147,9 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   }));
 
   app.post("/v1/auth/login", async (request, reply) => {
+    if (!authRateLimit(request, reply)) return;
     const body = request.body as { email?: unknown; password?: unknown } | undefined;
-    if (typeof body?.email !== "string" || !body.email.trim() || typeof body.password !== "string") {
+    if (typeof body?.email !== "string" || !body.email.trim() || body.email.length > 254 || typeof body.password !== "string" || Buffer.byteLength(body.password, "utf8") > 128) {
       return reply.code(400).send({ error: "LOGIN_FIELDS_REQUIRED" });
     }
     try {
@@ -129,8 +166,9 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   });
 
   app.post("/v1/auth/refresh", async (request, reply) => {
+    if (!authRateLimit(request, reply)) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
-    if (typeof body?.refreshToken !== "string" || !body.refreshToken) {
+    if (typeof body?.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
     }
     try {
@@ -142,8 +180,9 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   });
 
   app.post("/v1/auth/logout", async (request, reply) => {
+    if (!authRateLimit(request, reply)) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
-    if (typeof body?.refreshToken !== "string" || !body.refreshToken) {
+    if (typeof body?.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
     }
     try {
