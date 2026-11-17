@@ -47,7 +47,7 @@ export async function authenticateBearerToken(
     throw new Error("AUTH_TOKEN_INVALID");
   }
 
-  if (header.alg !== "HS256" || header.typ !== "JWT") throw new Error("AUTH_TOKEN_INVALID");
+  if (header.alg !== "HS256" || header.typ !== "JWT" || Object.keys(header).some((key) => key !== "alg" && key !== "typ")) throw new Error("AUTH_TOKEN_INVALID");
   const expected = createHmac("sha256", secret).update(`${parts[0]}.${parts[1]}`).digest();
   let supplied: Buffer;
   try {
