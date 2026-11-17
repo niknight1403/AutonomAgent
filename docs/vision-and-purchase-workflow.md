@@ -1,10 +1,50 @@
 # Vision inspection and controlled purchase workflow
 
+## Hidden Treasure Swarm (architecture and acceptance contract)
+
+The product-analysis pipeline is designed as a coordinated set of specialist agents. The orchestrator must not decide from a single model response. It dispatches bounded specialist tasks, preserves each specialist's evidence and uncertainty, and produces a consolidated candidate report.
+
+### Specialist roles
+
+1. **Visual identification specialist** — reads labels, logos, markings, model numbers, revisions, components, accessories, and visible condition. It must distinguish observed text from OCR guesses.
+2. **Market research specialist** — gathers recent, comparable sold listings from approved marketplace/search adapters. Asking prices are not sold prices. Without retrieved comparables, it must return `market_status: "RESEARCH_REQUIRED"` and no fabricated valuation.
+3. **Collector and rarity specialist** — checks editions, production runs, variants, discontinued lines, provenance clues, and collector demand. Rarity claims require a source or are marked unverified.
+4. **Technical specialist** — identifies part numbers, compatibility, repairability, replacement-part demand, and whether an apparently incomplete item may still be useful.
+5. **Restoration specialist** — estimates cleaning, repair, missing parts, labor, and parts cost. It must separate confirmed defects from visual assumptions.
+6. **Risk and authenticity specialist** — flags counterfeit indicators, safety concerns, legal restrictions, hidden damage, and conflicts between specialist findings. A visual model score is never an authenticity certificate.
+
+### Swarm orchestration
+
+- Create one durable analysis task per candidate and fan out specialist subtasks with a shared correlation ID.
+- Run independent specialists concurrently with bounded timeouts, retries, and per-provider rate limits.
+- Keep each result separate: role, status, findings, evidence/source references, confidence, unknowns, and timestamp.
+- A synthesis/critic step checks contradictions and requests targeted re-analysis when evidence is insufficient.
+- Never convert missing evidence into a positive claim. A low-confidence candidate may be queued for more photos or manual inspection.
+- Store raw specialist results and the consolidated report for auditability; do not overwrite the original listing facts.
+- The mobile app should show live specialist states (QUEUED, RUNNING, SUCCEEDED, FAILED), not simulated progress.
+
+### Treasure score and decision
+
+The score is a prioritization signal, not a guarantee. It should weigh:
+- evidence-backed resale value and comparable-sale freshness;
+- acquisition price plus shipping, fees, taxes, repair, missing parts, and risk reserve;
+- demand/liquidity and estimated time to sell;
+- rarity/collector signals only when supported by evidence;
+- uncertainty, authenticity concerns, and downside risk.
+
+Return an explicit value range only when sufficient market evidence exists. Otherwise return `valuationStatus: "RESEARCH_REQUIRED"`. Keep gross resale value, all-in cost, expected net profit, and confidence as separate fields. Do all currency calculations in integer minor units.
+
+### Safety boundary
+
+The Swarm may discover, research, rank, and recommend. It may not contact sellers, make offers, reserve goods, or pay for products as a side effect of analysis. Those actions require a separate ADMIN approval and the controlled purchase workflow below.
+
 ## Vision worker (implemented scaffold)
 
 The isolated Python worker under `services/vision-worker` uses an async OpenAI-compatible client and validates model output with Pydantic. Configure `LLM_API_KEY`, `LLM_BASE_URL`, and `VISION_MODEL` on the worker only. Configure the exact image host allowlist in the worker deployment and pass it as `allowed_hosts`.
 
 The downloader requires HTTPS, an exact allowlisted hostname, public DNS answers, no redirects, a supported image MIME type, matching file signatures, and an 8 MiB maximum. Production deployment must additionally enforce outbound network policy at the container/VPC layer to prevent DNS rebinding and access to metadata/private networks. The TypeScript API exposes POST /v1/deals/:dealId/vision-inspection behind ADMIN authorization, but returns 503 VISION_INSPECTOR_NOT_CONFIGURED until the deployment injects a worker adapter implementing inspectItemVisuals(imageUrl, hintTitle). The route uses the stored deal title, returns explicit purchaseAuthorized: false and authenticityVerified: false flags, and does not persist the result yet. Configure a strict image-host allowlist in the worker adapter; do not accept arbitrary user-supplied URLs or treat the model's visual score as an authenticity certificate.
+
+The specialist swarm described above is an architecture contract, not yet an integrated runtime. Market valuation requires real, approved search/marketplace data adapters; do not present model-generated price guesses as market research.
 
 ## Purchase workflow (design boundary; not an active integration)
 
