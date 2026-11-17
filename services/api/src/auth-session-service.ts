@@ -5,10 +5,18 @@ import {
   scrypt as scryptCallback,
   timingSafeEqual,
 } from "node:crypto";
+import type { ScryptOptions } from "node:crypto";
 import { promisify } from "node:util";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-const scrypt = promisify(scryptCallback);
+type ScryptAsync = (
+  password: string | Buffer,
+  salt: Buffer,
+  keylen: number,
+  options: ScryptOptions,
+) => Promise<Buffer>;
+
+const scrypt = promisify(scryptCallback) as ScryptAsync;
 const ACCESS_TTL_SECONDS = 15 * 60;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const SCRYPT_N = 32_768;
