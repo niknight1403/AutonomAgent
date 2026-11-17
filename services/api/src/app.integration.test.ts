@@ -16,6 +16,7 @@ let app: FastifyInstance;
 let adminEmail: string;
 let viewerEmail: string;
 let sequence = 0;
+let testClock = new Date("2026-11-17T12:00:00.000Z");
 
 async function createUser(role: "ADMIN" | "VIEWER") {
   sequence += 1;
@@ -63,11 +64,12 @@ async function login(email: string) {
 suite("authenticated deal review routes (RBAC)", () => {
   beforeAll(async () => {
     await prisma.$connect();
-    app = await buildServer({ prisma, authSigningSecret: SIGNING_SECRET });
+    app = await buildServer({ prisma, authSigningSecret: SIGNING_SECRET, now: () => testClock });
     await app.ready();
   });
 
   beforeEach(async () => {
+    testClock = new Date(testClock.getTime() + 61_000);
     adminEmail = await createUser("ADMIN");
     viewerEmail = await createUser("VIEWER");
   });
