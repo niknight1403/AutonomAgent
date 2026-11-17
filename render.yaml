@@ -3,13 +3,12 @@ services:
     name: autonomagent-api
     runtime: node
     region: frankfurt
-    plan: 0.5c-512mb
+    plan: free
     branch: main
     autoDeployTrigger: checksPass
     healthCheckPath: /health
     buildCommand: npm ci --include=dev && npx prisma generate --schema services/api/prisma/schema.prisma && npm run build --workspace @autonomagent/api
-    preDeployCommand: npx prisma migrate deploy --schema services/api/prisma/schema.prisma
-    startCommand: npm run start --workspace @autonomagent/api
+    startCommand: npx prisma migrate deploy --schema services/api/prisma/schema.prisma && npm run start --workspace @autonomagent/api
     envVars:
       - key: NODE_ENV
         value: production
@@ -29,7 +28,7 @@ services:
 databases:
   - name: autonomagent-vision-db
     region: frankfurt
-    plan: 0.1c-256mb
+    plan: free
     postgresMajorVersion: "18"
     databaseName: autonomagent_vision_db
     user: autonomagent_vision_db_user
