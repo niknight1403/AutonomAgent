@@ -194,6 +194,18 @@ suite("authenticated deal review routes (RBAC)", () => {
     expect(missing.json()).toEqual({ error: "DEAL_CANDIDATE_NOT_FOUND" });
   });
 
+  it("throttles repeated login attempts per client and endpoint", async () => {
+    const requests = await Promise.all(Array.from({ length: 6 }, () => app.inject({
+      method: "POST",
+      url: "/v1/auth/login",
+      payload: { email: adminEmail, password: "incorrect password value" },
+    })));
+    expect(requests.slice(0, 5).every((response) => response.statusCode === 401)).toBe(true);
+    expect(requests[5]?.statusCode).toBe(429);
+    expect(requests[5]?.headers["retry-after"]).toBeDefined();
+    expect(requests[5]?.json()).toEqual({ error: "AUTH_RATE_LIMITED" });
+  });
+
   it("rotates the refresh token exactly once and revokes it on logout", async () => {
     const { refreshToken } = await login(viewerEmail);
 
