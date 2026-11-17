@@ -1,9 +1,11 @@
 import pytest
 
+
 from vision_worker.vision_identifier import (
     InspectionError,
     VisualInspection,
     _validate_image_url,
+    VisionTreasureInspector,
 )
 
 
@@ -43,3 +45,27 @@ def test_visual_score_out_of_range_is_rejected():
             identified=True,
             visual_authenticity_score=1.2,
         )
+
+
+@pytest.mark.asyncio
+async def test_injected_clients_remain_owned_by_the_caller():
+    class FakeOpenAIClient:
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    class FakeHttpClient:
+        closed = False
+
+        async def aclose(self):
+            self.closed = True
+
+    llm = FakeOpenAIClient()
+    http = FakeHttpClient()
+    inspector = VisionTreasureInspector(client=llm, http_client=http)
+
+    await inspector.close()
+
+    assert llm.closed is False
+    assert http.closed is False
