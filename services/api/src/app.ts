@@ -185,7 +185,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
 
   app.post("/v1/auth/refresh", async (request, reply) => {
     reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
-    if (!authRateLimit(request, reply)) return;
+    if (!(await authRateLimit(request, reply))) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
     if (!body || Object.keys(body).some((key) => key !== "refreshToken") || typeof body.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
@@ -200,7 +200,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
 
   app.post("/v1/auth/logout", async (request, reply) => {
     reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
-    if (!authRateLimit(request, reply)) return;
+    if (!(await authRateLimit(request, reply))) return;
     const body = request.body as { refreshToken?: unknown } | undefined;
     if (!body || Object.keys(body).some((key) => key !== "refreshToken") || typeof body.refreshToken !== "string" || !body.refreshToken || body.refreshToken.length > 256) {
       return reply.code(400).send({ error: "REFRESH_TOKEN_REQUIRED" });
