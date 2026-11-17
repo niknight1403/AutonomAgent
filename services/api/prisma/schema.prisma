@@ -194,3 +194,118 @@ model DealCandidate {
   @@index([observedAt])
 }
 
+
+enum TestnetKillSwitchScope {
+  GLOBAL
+  PROVIDER
+  ACCOUNT
+  STRATEGY
+}
+
+enum TestnetKillSwitchState {
+  ARMED
+  TRIGGERED
+  DRAINING
+  HALTED
+}
+
+enum TestnetOrderStatus {
+  DRAFT
+  APPROVED
+  QUEUED
+  SUBMITTING
+  SUBMITTED
+  PARTIALLY_FILLED
+  FILLED
+  CANCEL_REQUESTED
+  CANCELLED
+  REJECTED
+  UNKNOWN
+}
+
+enum ReconciliationStatus {
+  RUNNING
+  CLEAN
+  HALT_REQUIRED
+  FAILED
+}
+
+model TestnetKillSwitch {
+  id          String                 @id @default(cuid())
+  scope       TestnetKillSwitchScope
+  scopeKey    String
+  state       TestnetKillSwitchState @default(ARMED)
+  reason      String
+  version     Int                    @default(1)
+  triggeredBy String?
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  @@unique([scope, scopeKey])
+  @@index([state, updatedAt])
+}
+
+model ApprovalSnapshot {
+  id              String   @id @default(cuid())
+  intentId        String   @unique
+  payloadHash     String   @db.VarChar(64)
+  environment     String   @default("TESTNET")
+  providerId      String
+  accountId       String
+  instrument      String
+  side            String
+  quantity        BigInt
+  limitPriceCents BigInt
+  feeLimitCents   BigInt
+  expiresAt       DateTime
+  approvedBy      String
+  createdAt       DateTime @default(now())
+
+  @@index([environment, providerId, accountId])
+  @@index([expiresAt])
+}
+
+model TestnetOrderIntent {
+  id             String             @id @default(cuid())
+  idempotencyKey String             @unique
+  payloadHash    String             @db.VarChar(64)
+  environment    String             @default("TESTNET")
+  providerId     String
+  accountId      String
+  status         TestnetOrderStatus @default(DRAFT)
+  clientOrderId  String             @unique
+  approvalId     String?            @unique
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([environment, providerId, accountId, status])
+  @@index([status, updatedAt])
+}
+
+model TestnetOrderEvent {
+  id          String   @id @default(cuid())
+  intentId    String
+  eventType   String
+  payloadHash String   @db.VarChar(64)
+  payload     Json
+  observedAt  DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([intentId, createdAt])
+  @@unique([intentId, eventType, payloadHash])
+}
+
+model ReconciliationRun {
+  id          String               @id @default(cuid())
+  environment String               @default("TESTNET")
+  providerId  String
+  accountId   String
+  status      ReconciliationStatus @default(RUNNING)
+  watermark   String?
+  diffSummary Json?
+  startedAt   DateTime             @default(now())
+  finishedAt  DateTime?
+
+  @@index([providerId, accountId, startedAt])
+  @@index([status, startedAt])
+}

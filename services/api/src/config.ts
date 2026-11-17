@@ -18,6 +18,7 @@ export const config = Object.freeze({
   port: Number(process.env.PORT ?? 8080),
   tradingMode: "PAPER" as const,
   liveTradingEnabled: false as const,
+  testnetEnabled: false as const,
   emergencyStop: parseBoolean(process.env.EMERGENCY_STOP, true),
 });
 

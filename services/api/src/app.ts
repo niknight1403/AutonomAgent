@@ -104,6 +104,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     service: "autonomagent-api",
     tradingMode: config.tradingMode,
     liveTradingEnabled: config.liveTradingEnabled,
+    testnetEnabled: config.testnetEnabled,
     emergencyStop: config.emergencyStop,
     tradingReady: false,
     note: "Health only. Trading endpoints are not implemented.",

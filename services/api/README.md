@@ -2,6 +2,14 @@
 
 The API is intentionally not wired to live marketplace providers yet.
 
+The repository now contains a disabled, fail-closed testnet safety boundary in
+`src/testnet-execution.ts`: approval snapshots, order-state transitions,
+kill-switch evaluation, deterministic client-order IDs, a disabled provider
+adapter, and reconciliation diff classification. The Prisma schema and
+migration persist the corresponding safety records. `testnetEnabled` remains
+hard-coded to `false`; no provider host, credential, or mutating HTTP route is
+configured.
+
 ## Implemented foundation
 
 - Fastify health service with fail-closed configuration.
