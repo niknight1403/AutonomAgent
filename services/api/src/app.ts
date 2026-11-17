@@ -7,7 +7,7 @@ import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } fr
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
 import { listAuditEvents, writeAuditEvent } from "./audit-service.js";
-import { InMemoryAuthRateLimiter, RedisRestAuthRateLimiter } from "./auth-rate-limit.js";
+import { PostgresAuthRateLimiter } from "./auth-rate-limit.js";
 import { runAndPersistDealScan } from "./deal-scan-service.js";
 import { createConfiguredProviderRegistry } from "./providers/bootstrap.js";
 import type { ProviderRegistry } from "./providers/registry.js";
@@ -29,7 +29,7 @@ const MAX_DEAL_LIMIT = 100;
 
 const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   AUTH_SIGNING_SECRET_NOT_CONFIGURED: 503,
-  AUTH_RATE_LIMIT_REDIS_UNAVAILABLE: 503,
+  AUTH_RATE_LIMIT_DATABASE_INVALID_RESPONSE: 503,
   AUTHENTICATION_REQUIRED: 401,
   AUTH_TOKEN_INVALID: 401,
   AUTH_TOKEN_EXPIRED_OR_NOT_ACTIVE: 401,
@@ -89,17 +89,9 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     bodyLimit: 16 * 1024,
     trustProxy: false,
   });
-  const redisUrl = process.env.AUTH_RATE_LIMIT_REDIS_REST_URL;
-  const redisToken = process.env.AUTH_RATE_LIMIT_REDIS_TOKEN;
-  const rateLimiter = redisUrl && redisToken
-    ? new RedisRestAuthRateLimiter(redisUrl, redisToken)
-    : new InMemoryAuthRateLimiter();
+  const rateLimiter = new PostgresAuthRateLimiter(prisma);
 
   async function authRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
-    if (process.env.NODE_ENV === "production" && !(redisUrl && redisToken)) {
-      reply.code(503).send({ error: "AUTH_RATE_LIMIT_REDIS_UNAVAILABLE" });
-      return false;
-    }
     const key = `${request.ip}:${request.routeOptions.url ?? request.url.split("?")[0]}`;
     try {
       const decision = await rateLimiter.consume(key, now().getTime());
@@ -110,7 +102,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
       return true;
     } catch (error) {
       request.log.error({ err: error }, "authentication rate limiter unavailable");
-      reply.code(503).send({ error: "AUTH_RATE_LIMIT_REDIS_UNAVAILABLE" });
+      reply.code(503).send({ error: "AUTH_RATE_LIMIT_DATABASE_INVALID_RESPONSE" });
       return false;
     }
   }
