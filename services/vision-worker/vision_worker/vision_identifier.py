@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import ipaddress
 import os
@@ -35,9 +36,13 @@ class InspectionError(Exception):
 
 def _validate_image_url(image_url: str, allowed_hosts: set[str]) -> str:
     parsed = urlsplit(image_url)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise InspectionError("Ungültige Bildquellen-URL.") from exc
     if parsed.scheme != "https" or not parsed.hostname:
         raise InspectionError("Nur HTTPS-Bildquellen sind erlaubt.")
-    if parsed.username or parsed.password or parsed.port not in (None, 443):
+    if parsed.username or parsed.password or port not in (None, 443):
         raise InspectionError("Ungültige Bildquellen-URL.")
     host = parsed.hostname.rstrip(".").lower()
     if host not in allowed_hosts:
@@ -50,11 +55,13 @@ def _validate_image_url(image_url: str, allowed_hosts: set[str]) -> str:
 async def _reject_private_dns(host: str) -> None:
     """Reject private/reserved DNS answers; network egress rules remain required."""
     try:
-        records = await __import__("asyncio").to_thread(
+        records = await asyncio.to_thread(
             socket.getaddrinfo, host, 443, type=socket.SOCK_STREAM
         )
     except OSError as exc:
         raise InspectionError("Bildquelle konnte nicht aufgelöst werden.") from exc
+    if not records:
+        raise InspectionError("Bildquelle konnte nicht aufgelöst werden.")
     for record in records:
         address = ipaddress.ip_address(record[4][0])
         if not address.is_global:
@@ -78,6 +85,7 @@ class VisionTreasureInspector:
             if item.strip()
         }
         self.model = model or os.getenv("VISION_MODEL", "qwen2.5-vl:7b")
+        self._owns_openai_client = client is None
         self.client = client or AsyncOpenAI(
             api_key=os.getenv("LLM_API_KEY", "ollama"),
             base_url=os.getenv("LLM_BASE_URL", "http://127.0.0.1:11434/v1"),
@@ -94,7 +102,8 @@ class VisionTreasureInspector:
     async def close(self) -> None:
         if self._owns_http_client:
             await self.http_client.aclose()
-        await self.client.close()
+        if self._owns_openai_client:
+            await self.client.close()
 
     async def download_image(self, image_url: str) -> tuple[str, bytes]:
         host = _validate_image_url(image_url, self.allowed_hosts)
@@ -107,8 +116,13 @@ class VisionTreasureInspector:
                 if content_type not in ALLOWED_IMAGE_TYPES:
                     raise InspectionError("Nicht unterstütztes Bildformat.")
                 declared_size = response.headers.get("content-length")
-                if declared_size and int(declared_size) > MAX_IMAGE_BYTES:
-                    raise InspectionError("Bild überschreitet das Größenlimit.")
+                if declared_size:
+                    try:
+                        parsed_size = int(declared_size)
+                    except ValueError as exc:
+                        raise InspectionError("Ungültige Bildgrößenangabe.") from exc
+                    if parsed_size < 0 or parsed_size > MAX_IMAGE_BYTES:
+                        raise InspectionError("Bild überschreitet das Größenlimit.")
                 chunks: list[bytes] = []
                 total = 0
                 async for chunk in response.aiter_bytes():
