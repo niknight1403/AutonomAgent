@@ -160,12 +160,17 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
         signingSecret(),
         now(),
       );
-      await writeAuditEvent(prisma, {
-        action: "AUTH_LOGIN",
-        outcome: "SUCCESS",
-        requestId: request.id,
-        metadata: { emailDomain: body.email.split("@").at(-1)?.toLowerCase() ?? "unknown" },
-      });
+      try {
+        await writeAuditEvent(prisma, {
+          action: "AUTH_LOGIN",
+          outcome: "SUCCESS",
+          requestId: request.id,
+          metadata: { emailDomain: body.email.split("@").at(-1)?.toLowerCase() ?? "unknown" },
+        });
+      } catch (auditError) {
+        await revokeRefreshToken(prisma, tokens.refreshToken, now());
+        throw auditError;
+      }
       return reply.code(200).send(tokens);
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
@@ -192,6 +197,11 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     }
     try {
       const tokens = await rotateRefreshToken(prisma, body.refreshToken, signingSecret(), now());
+      await writeAuditEvent(prisma, {
+        action: "AUTH_REFRESH",
+        outcome: "SUCCESS",
+        requestId: request.id,
+      });
       return reply.code(200).send(tokens);
     } catch (error) {
       return fail(reply, error);
