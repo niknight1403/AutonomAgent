@@ -33,6 +33,7 @@ export interface DealAnalysis {
   title: string;
   url: string;
   currency: string;
+  purchasePriceMinor: number;
   observedAt: string;
   simulated: boolean;
   totalCostCents: bigint;
@@ -100,6 +101,7 @@ export function analyzeDeals(
       title: product.title,
       url: product.url,
       currency: product.currency,
+      purchasePriceMinor: product.priceMinor,
       observedAt: product.observedAt,
       simulated: product.simulated,
       totalCostCents: profit.totalCostCents,
