@@ -1,3 +1,5 @@
+import { loadTestnetRuntimeConfig } from "./testnet-config.js";
+
 export type TradingMode = "PAPER";
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -11,6 +13,10 @@ const requestedMode = process.env.TRADING_MODE ?? "PAPER";
 if (requestedMode !== "PAPER") throw new Error("LIVE trading is disabled in this project");
 if (parseBoolean(process.env.LIVE_TRADING_ENABLED, false)) {
   throw new Error("LIVE trading is disabled in this project");
+}
+const testnetRuntimeConfig = loadTestnetRuntimeConfig();
+if (testnetRuntimeConfig.enabled) {
+  throw new Error("TESTNET execution is not enabled in this release");
 }
 
 export const config = Object.freeze({

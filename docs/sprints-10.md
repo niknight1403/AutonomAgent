@@ -1,4 +1,4 @@
-# Achtundvierzig Ergebnis-Sprints: AutonomAgent
+# Fünfzig Ergebnis-Sprints: AutonomAgent
 
 **Grundlage:** öffentliches Repository `niknight1403/AutonomAgent`; beim Start gab es kein Sprint-Board und keine offenen GitHub-Issues. Die Abfolge bündelt die vorhandenen Refactoring-Befunde und den genehmigten sicheren Produktpilot. „Sprint“ bezeichnet hier ein prüfbares Ergebnis, nicht eine Kalenderwoche.
 
@@ -52,6 +52,8 @@
 | 46 | Persistentes Prisma-Modell für Testnet-Intents, Events und Kill-Switches | Implementiert – Migration `20261117015000_testnet_safety` ergänzt |
 | 47 | Reconciliation-Diffklassifizierung für unbekannte Orders, Fills und Gebühren | Implementiert – kritische Abweichungen verlangen Halt |
 | 48 | Deaktivierter Provider-Adapter und Sicherheits-Regressionstests | Implementiert – keine mutierenden Provideraufrufe möglich |
+| 49 | Versionierte TESTNET-Runtime-Konfiguration mit exakter Host-, Account- und Environment-Bindung | Implementiert – HTTPS, Allowlist, Produktionshost-Sperre und fail-closed Startup geprüft |
+| 50 | Automatisierte lokale Testnet-Integrationstests und read-only Capability-Matrix | Implementiert – Config, Egress-Client, Redirect-/Pfadschutz und Adaptervertrag gemeinsam geprüft |
 
 Die Sprints 2–6 ändern Kernverhalten mit Datenbankeffekten. Sie gelten erst als abgeschlossen, wenn Regressionstests bestanden sind; wo PostgreSQL erforderlich ist, zählt ein Mock nicht als Ersatz. Die Produktions-Release-Gates bleiben von einem GitHub-Quellcode-Release getrennt; ein Code-Release erklärt die Anwendung nicht für produktionsreif.
 
