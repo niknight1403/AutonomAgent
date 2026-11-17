@@ -102,6 +102,35 @@ suite("authenticated deal review routes (RBAC)", () => {
     expect(response.json()).toEqual({ error: "AUTHENTICATION_REQUIRED" });
   });
 
+  it("keeps vision inspection ADMIN-only and unavailable until a worker adapter is configured", async () => {
+    const deal = await createDeal();
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const viewer = await login(viewerEmail);
+    const forbidden = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      headers: { authorization: `Bearer ${viewer.accessToken}` },
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const admin = await login(adminEmail);
+    const unavailable = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json()).toEqual({ error: "VISION_INSPECTOR_NOT_CONFIGURED" });
+  });
+
   it("serves the deal list to an authenticated viewer with JSON-safe amounts", async () => {
     const deal = await createDeal();
     const { accessToken } = await login(viewerEmail);
