@@ -7,7 +7,7 @@ import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } fr
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
 import { listAuditEvents, writeAuditEvent } from "./audit-service.js";
-import { PostgresAuthRateLimiter } from "./auth-rate-limit.js";
+import { InMemoryAuthRateLimiter, PostgresAuthRateLimiter } from "./auth-rate-limit.js";
 import { runAndPersistDealScan } from "./deal-scan-service.js";
 import { createConfiguredProviderRegistry } from "./providers/bootstrap.js";
 import type { ProviderRegistry } from "./providers/registry.js";
@@ -89,7 +89,9 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     bodyLimit: 16 * 1024,
     trustProxy: false,
   });
-  const rateLimiter = new PostgresAuthRateLimiter(prisma);
+  const rateLimiter = process.env.NODE_ENV === "test"
+    ? new InMemoryAuthRateLimiter()
+    : new PostgresAuthRateLimiter(prisma);
 
   async function authRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
     const key = `${request.ip}:${request.routeOptions.url ?? request.url.split("?")[0]}`;
