@@ -69,3 +69,10 @@ A generic contract adapter is now available in `src/providers/catalog-rest-adapt
 Product payloads are validated and normalized; product links must use HTTPS. The adapter advertises only `PRODUCT_SEARCH`. It has no purchase, listing, payment, or order mutation methods. `bootstrap.ts` registers it only when the `PROVIDER_CATALOG_DEMO_*` server environment is configured.
 
 This is a generic integration contract and test fixture, not a connection to eBay, Amazon, Shopify, or another real marketplace. No provider endpoint or credentials are supplied by default. The registry is not yet exposed through an HTTP route because authenticated sessions and provider-specific authorization are not implemented. Do not enable this adapter against a real service until its official API contract, terms, credentials, and response schema have been reviewed.
+
+
+### Deal analysis and risk screening
+
+`@autonomagent/trading-core` exports `analyzeDeals` from `src/deal-scanner.ts`. It accepts normalized provider products plus an explicit cost profile (shipping, marketplace/payment fees, packaging, risk reserve) and a resale-price assumption. It calculates expected net profit and ROI with integer-cent/BigInt arithmetic, then applies the existing risk limits.
+
+The scanner currently accepts EUR only; it rejects other currencies rather than silently converting them. It also rejects duplicate provider identities and invalid minor-unit prices. `approvedByRiskRules` means only that the supplied numeric candidate passed the configured rules; it is not purchase authorization, a guarantee of sale, realized profit, or a signal to execute a trade. The scanner does not reserve funds or create orders.
