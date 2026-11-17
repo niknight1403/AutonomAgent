@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./app.js";
 import { hashPassword } from "./auth-session-service.js";
+import { ProviderRegistry } from "./providers/registry.js";
 
 const databaseEnabled = Boolean(process.env.DATABASE_URL);
 const suite = describe.skipIf(!databaseEnabled);
@@ -64,7 +65,7 @@ async function login(email: string) {
 suite("authenticated deal review routes (RBAC)", () => {
   beforeAll(async () => {
     await prisma.$connect();
-    app = await buildServer({ prisma, authSigningSecret: SIGNING_SECRET, now: () => testClock });
+    app = await buildServer({ prisma, authSigningSecret: SIGNING_SECRET, now: () => testClock, providers: new ProviderRegistry() });
     await app.ready();
   });
 
@@ -126,6 +127,58 @@ suite("authenticated deal review routes (RBAC)", () => {
     expect(events.some((event) => event.action === "AUTH_LOGIN")).toBe(true);
     expect(events.some((event) => event.action === "AUTH_LOGOUT")).toBe(true);
     expect(events.some((event) => event.action === "DEAL_REVIEW" && event.targetId === deal.id)).toBe(true);
+  });
+
+  it("exposes provider configuration without secrets and fails scans closed when no provider is configured", async () => {
+    const { accessToken } = await login(adminEmail);
+    const providers = await app.inject({
+      method: "GET",
+      url: "/v1/admin/providers",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(providers.statusCode).toBe(200);
+    expect(providers.json()).toEqual({ providers: [] });
+
+    const scan = await app.inject({
+      method: "POST",
+      url: "/v1/admin/deals/scan",
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: {
+        providerId: "missing-provider",
+        query: "camera lens",
+        limit: 10,
+        resalePriceCents: "25000",
+        costs: {
+          inboundShippingCents: "500",
+          outboundShippingCents: "500",
+          marketplaceFeeCents: "1000",
+          paymentFeeCents: "500",
+          packagingCents: "200",
+          riskReserveCents: "300",
+        },
+        openTrades: 0,
+        dailyLossCents: "0",
+        riskLimits: {
+          maxTradeCents: "50000",
+          maxOpenTrades: 5,
+          maxDailyLossCents: "10000",
+          minProfitCents: "1000",
+          minRoiBasisPoints: "1500",
+        },
+      },
+    });
+    expect(scan.statusCode).toBe(503);
+    expect(scan.json()).toEqual({ error: "DEAL_PROVIDER_UNAVAILABLE" });
+  });
+
+  it("forbids a viewer from listing configured providers", async () => {
+    const { accessToken } = await login(viewerEmail);
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/admin/providers",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(response.statusCode).toBe(403);
   });
 
   it("does not allow a viewer to read the admin audit stream", async () => {
