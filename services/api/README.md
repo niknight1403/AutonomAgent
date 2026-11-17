@@ -104,3 +104,18 @@ This is an internal service function, not a public route or an automatically sch
 `src/auth-service.ts` adds a reusable bearer-token verifier for short-lived HS256 JWT access tokens. It requires a server-side signing secret of at least 32 bytes, a fixed issuer/audience, a maximum 15-minute token lifetime, valid time claims, and a valid signature. It then reloads the user's current role and disabled state from PostgreSQL; any role claim embedded in the token is ignored. `requireAdmin` checks that database-backed principal.
 
 This is an authentication primitive only. There is deliberately no login/token-issuing endpoint, password reset flow, refresh-token store, session revocation system, or public deal-review route yet. A trusted issuer must provision tokens using the documented issuer/audience and HS256 contract, and the API deployment must supply the same high-entropy secret through its secret manager. Do not put this secret in the mobile app, source control, or `EXPO_PUBLIC_*`. Until a trusted issuer, key rotation, rate limiting, audit logging, and authenticated route integration are in place, the review queue remains internal and inaccessible over HTTP. The test suite has been added but has not been executed in this environment.
+
+
+### Password login and rotating refresh sessions
+
+`src/auth-session-service.ts` adds:
+- password hashing and verification with Node.js scrypt (fixed work parameters, per-password random salt, 32-byte derived key);
+- credential login with a generic invalid-credentials response for unknown, disabled, or incorrect accounts;
+- 15-minute HS256 access-token issuance using the same issuer/audience contract as `auth-service.ts`;
+- cryptographically random refresh tokens, with only SHA-256 token hashes stored in PostgreSQL;
+- one-time refresh rotation inside a Serializable transaction, using a conditional update so concurrent reuse cannot successfully rotate the same session;
+- refresh-token revocation.
+
+The Prisma `RefreshSession` model and migration `20261117010000_auth_sessions` are committed. The migration has **not** been applied. Passwords must be at least 12 and no more than 128 UTF-8 bytes. Existing user creation and initial ADMIN bootstrap are intentionally not exposed; provision the first administrator through a controlled out-of-band process. Never make public self-registration assign ADMIN.
+
+These are internal service primitives only. No login, refresh, logout, or deal-review HTTP routes are wired to Fastify yet. Before exposing them, add strict request schemas, TLS-only deployment, login rate limiting and abuse controls, CSRF protection if cookies are used, key rotation strategy, security audit events, and operational session cleanup. Keep refresh tokens out of logs and browser local storage; mobile clients should use platform secure storage. The API must receive the signing secret from its deployment secret manager. The added unit tests have not been executed here.
