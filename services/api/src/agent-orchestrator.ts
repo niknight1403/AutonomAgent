@@ -1,7 +1,8 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import {
-  claimAgentTask, completeAgentTask, failAgentTask, saveTaskCheckpoint,
+  claimAgentTask, completeAgentTask, failAgentTask, PermanentTaskError, recoverExpiredAgentTasks,
+  saveTaskCheckpoint,
 } from "./agent-task-service.js";
 
 type JsonObject = Prisma.InputJsonObject;
@@ -22,6 +23,26 @@ export type OrchestratorOptions = {
   heartbeatIntervalMs?: number;
 };
 
+export function waitForPoll(signal: AbortSignal, delayMs: number): Promise<void> {
+  if (!Number.isFinite(delayMs) || delayMs < 0) throw new Error("INVALID_POLL_DELAY");
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const onAbort = () => finish();
+    timer = setTimeout(finish, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) finish();
+  });
+}
+
 export async function heartbeatTaskLease(
   prisma: PrismaClient, taskId: string, workerId: string, leaseSeconds = 90,
 ): Promise<Date> {
@@ -40,9 +61,8 @@ export async function listClaimableTaskIds(prisma: PrismaClient, limit = 20): Pr
     where: {
       attempt: { lt: 20 },
       OR: [
-        { status: "QUEUED" },
+        { status: "QUEUED", availableAt: { lte: new Date() } },
         { status: "CHECKPOINTED" },
-        { status: "RUNNING", leaseUntil: { lt: new Date() } },
       ],
     },
     orderBy: { createdAt: "asc" },
@@ -66,7 +86,7 @@ async function executeTask(
   }
   const handler = handlers[task.taskType];
   if (!handler) {
-    await failAgentTask(prisma, taskId, workerId, new Error("NO_HANDLER_REGISTERED"));
+    await failAgentTask(prisma, taskId, workerId, new PermanentTaskError("NO_HANDLER_REGISTERED"));
     return true;
   }
 
@@ -111,6 +131,8 @@ export async function runAgentOrchestrator(
   const loops = Array.from({ length: concurrency }, async (_, index) => {
     const workerName = options.workerId + "-" + index;
     while (!signal.aborted) {
+      await recoverExpiredAgentTasks(prisma);
+      if (signal.aborted) break;
       const ids = await listClaimableTaskIds(prisma, concurrency * 2);
       let didWork = false;
       for (const id of ids) {
@@ -121,10 +143,7 @@ export async function runAgentOrchestrator(
         }
       }
       if (!didWork) {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, pollMs);
-          signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
-        });
+        await waitForPoll(signal, pollMs);
       }
     }
   });

@@ -24,7 +24,7 @@ This repository is an initial, safe foundation. It is **not** a production tradi
 Requirements: Node.js 20+ and npm.
 
 ```bash
-npm install
+npm ci
 npm run mobile
 ```
 
@@ -46,3 +46,8 @@ See [docs/architecture.md](docs/architecture.md) and [docs/release-gates.md](doc
 ## License
 
 No license has been granted yet. All rights reserved unless a separate license is added.
+
+
+## Lokaler Produktpilot (Demo)
+
+Die Android-App enthält einen explizit gestarteten, deterministischen Demo-Lauf mit lokal festgelegten Produktbeispielen, Cent-basierter Profit-/Risikobewertung, unveröffentlichten Listing-Entwürfen, illustrativen Reichweitenideen und einer Warteschlange für manuelle Prüfung. Der Demo-Lauf selbst startet keine externen Marktplatz-/Werbeaufrufe, Hintergrundjobs, Käufe, Veröffentlichungen oder Freigabeausführung. Separate API-Worker-Bausteine sind nicht mit dem mobilen Demo-Lauf verbunden und werden vom aktuellen Serverstart nicht gestartet. PAPER bleibt aktiv; die API-Konfiguration weist LIVE hart zurück. Preise, Bestände, Margen und Reichweiten sind Beispieldaten, keine Marktdaten oder Prognosen.

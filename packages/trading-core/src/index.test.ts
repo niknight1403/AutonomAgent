@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateRisk, calculateNetProfit } from "../../../packages/trading-core/src/index.js";
+import { evaluateRisk, calculateNetProfit } from "./index";
 
 describe("trading core invariants", () => {
   it("calculates net profit using integer cents", () => {

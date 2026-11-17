@@ -103,6 +103,7 @@ export async function releaseFunds(
 ): Promise<WalletSnapshot> {
   assertPositiveAmount(input.amountCents);
   if (!input.referenceId.trim()) throw new Error("REFERENCE_ID_REQUIRED");
+  if (!input.reservationReferenceId.trim()) throw new Error("RESERVATION_REFERENCE_REQUIRED");
 
   return prisma.$transaction(async (tx) => {
     const rows = await tx.$queryRaw<Array<{ id: string }>>`
@@ -114,7 +115,8 @@ export async function releaseFunds(
     if (existing) {
       if (existing.accountId !== input.accountId ||
           existing.entryType !== "RESERVATION_RELEASE" ||
-          existing.amountCents !== input.amountCents) {
+          existing.amountCents !== input.amountCents ||
+          existing.reservationReferenceId !== input.reservationReferenceId) {
         throw new Error("IDEMPOTENCY_CONFLICT");
       }
       return snapshot(tx, input.accountId);
@@ -127,6 +129,17 @@ export async function releaseFunds(
         originalReservation.entryType !== "RESERVATION" ||
         originalReservation.amountCents !== input.amountCents) {
       throw new Error("ORIGINAL_RESERVATION_NOT_FOUND_OR_MISMATCHED");
+    }
+    const priorReleases = await tx.walletLedger.aggregate({
+      where: {
+        entryType: "RESERVATION_RELEASE",
+        reservationReferenceId: input.reservationReferenceId,
+      },
+      _sum: { amountCents: true },
+    });
+    const alreadyReleasedCents = priorReleases._sum.amountCents ?? 0n;
+    if (alreadyReleasedCents + input.amountCents > originalReservation.amountCents) {
+      throw new Error("RESERVATION_RELEASE_EXCEEDS_ORIGINAL_AMOUNT");
     }
     const account = await tx.walletAccount.findUnique({ where: { id: input.accountId } });
     if (!account) throw new Error("WALLET_NOT_FOUND");
@@ -142,6 +155,7 @@ export async function releaseFunds(
         entryType: "RESERVATION_RELEASE",
         amountCents: input.amountCents,
         referenceId: input.referenceId,
+        reservationReferenceId: input.reservationReferenceId,
         correlationId: input.correlationId,
         description: input.description,
       },

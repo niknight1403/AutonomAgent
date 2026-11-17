@@ -58,3 +58,5 @@ export function evaluateRisk(candidate: RiskCandidate, limits: RiskLimits): stri
   if (candidate.roiBasisPoints === null || candidate.roiBasisPoints < limits.minRoiBasisPoints) reasons.push("MIN_ROI_NOT_MET");
   return reasons;
 }
+
+export * from "./autopilot";

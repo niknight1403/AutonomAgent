@@ -63,11 +63,15 @@ model WalletLedger {
   entryType     LedgerEntryType
   amountCents   BigInt
   referenceId   String          @unique
+  reservationReferenceId String?
+  reservation   WalletLedger?   @relation("ReservationReleases", fields: [reservationReferenceId], references: [referenceId], onDelete: Restrict)
+  releases      WalletLedger[] @relation("ReservationReleases")
   correlationId String?
   description   String
   createdAt     DateTime        @default(now())
 
   @@index([accountId, createdAt])
+  @@index([reservationReferenceId])
   @@index([correlationId])
 }
 
@@ -119,12 +123,14 @@ model AgentTask {
   taskType       String
   status         ExecutionStatus @default(QUEUED)
   input          Json
+  inputHash      String?         @db.VarChar(64)
   result         Json?
   checkpoint     Json?
   correlationId  String?
   idempotencyKey String          @unique
   attempt        Int             @default(0)
   maxAttempts    Int             @default(3)
+  availableAt    DateTime        @default(now())
   lockedBy       String?
   leaseUntil     DateTime?
   lastError      String?
@@ -134,6 +140,7 @@ model AgentTask {
   updatedAt      DateTime        @updatedAt
 
   @@index([status, createdAt])
+  @@index([status, availableAt])
   @@index([ownerId, createdAt])
   @@index([leaseUntil])
 }
