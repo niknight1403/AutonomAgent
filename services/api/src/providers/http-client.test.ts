@@ -122,8 +122,11 @@ describe("ProviderHttpClient", () => {
       timeoutMs: 25,
     });
     const pending = client.getJson("items");
+    // Attach the rejection handler before advancing fake timers so Vitest
+    // does not report the expected abort as an unhandled rejection.
+    const rejection = expect(pending).rejects.toThrow(/aborted or timed out/);
     await vi.advanceTimersByTimeAsync(25);
-    await expect(pending).rejects.toThrow(/aborted or timed out/);
+    await rejection;
     expect(vi.getTimerCount()).toBe(0);
   });
 });
