@@ -156,3 +156,44 @@ The routes expose review decisions only. There is still no purchase, reservation
 The `SecurityAuditEvent` table and `src/audit-service.ts` provide structured audit storage and bounded, descending-time reads. Deal review decisions write their audit event in the same serializable transaction as the status change, so a review cannot commit without its corresponding event. Administrators can read events through `GET /v1/admin/audit`; the route requires a current database-backed ADMIN principal and supports a bounded limit and timestamp cursor.
 
 Apply the migration at `prisma/migrations/20261117020000_security_audit_events/migration.sql` before using these paths. For stronger tamper resistance, use a dedicated database role that has INSERT/SELECT but no UPDATE/DELETE privileges on `SecurityAuditEvent`, restrict direct database access, and export events to separately controlled immutable storage. The application model alone does not make records cryptographically tamper-proof. Authentication lifecycle events are not yet comprehensively wired into this audit stream.
+
+
+### Production bootstrap and operations
+
+Production authentication requires all of the following before opening the service to users:
+
+- `DATABASE_URL` pointing to PostgreSQL with the reviewed Prisma migrations applied.
+- `AUTH_SIGNING_SECRET` generated from at least 32 cryptographically random bytes and stored only in the server secret manager.
+- `AUTH_RATE_LIMIT_REDIS_REST_URL` and `AUTH_RATE_LIMIT_REDIS_TOKEN` for the HTTPS Redis REST endpoint. Production auth requests fail closed with HTTP 503 if these are absent or Redis is unavailable. The in-memory limiter is for local development/test only.
+- `TRADING_MODE=PAPER`, `LIVE_TRADING_ENABLED=false`, and `EMERGENCY_STOP=true`.
+
+Create the first administrator only from a trusted operator shell after migrations are applied:
+
+```sh
+CONFIRM_ADMIN_BOOTSTRAP=YES \
+ADMIN_BOOTSTRAP_EMAIL=admin@example.invalid \
+ADMIN_BOOTSTRAP_PASSWORD='<secret from your secret manager>' \
+npm run admin:create --workspace @autonomagent/api
+```
+
+Use a unique password of at least 12 characters. Do not put the password in source control, a mobile build, a command committed to shell history, or logs. The command refuses to overwrite an existing account; account recovery and role changes must be handled through a separately reviewed administrative process.
+
+Run bounded refresh-session cleanup from a trusted scheduler, for example daily:
+
+```sh
+npm run sessions:cleanup --workspace @autonomagent/api
+```
+
+The cleanup command repeats bounded batches until fewer than 500 stale rows remain. Give the scheduler only the database credentials it needs, capture its exit status and deleted count, and alert on failures.
+
+### Deployment acceptance checklist
+
+1. Provision PostgreSQL and Redis REST credentials in the deployment secret manager; never add secret values to GitHub source files or Expo public variables.
+2. Apply migrations with `npx prisma migrate deploy --schema services/api/prisma/schema.prisma`.
+3. Run `npm ci`, Prisma generation, `npm run typecheck`, `npm test`, and the API build in CI.
+4. Bootstrap the first ADMIN using the controlled command above.
+5. Verify login, refresh-token one-time rotation, logout, viewer/ADMIN route access, audit event creation, and Redis rate limiting against the deployed staging environment.
+6. Configure a scheduler for session cleanup and database backups/restore tests.
+7. Keep PAPER mode and the emergency stop enabled. Do not enable any live purchasing or order execution without separate provider integrations, explicit human approval, and a successful safety review.
+
+A successful Git push is not proof of deployment. No production secrets, database, Redis instance, admin account, or deployment are provisioned by these repository changes.
