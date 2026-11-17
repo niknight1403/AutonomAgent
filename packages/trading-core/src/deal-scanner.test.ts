@@ -65,3 +65,55 @@ describe("analyzeDeals", () => {
       .toThrow(/duplicate/);
   });
 });
+
+describe("scanProviderDeals", () => {
+  it("passes the bounded search request into the provider and analyzes only returned products", async () => {
+    const searchProducts = async (request: { query: string; limit: number; currency: string }) => {
+      expect(request).toEqual({ query: "camera", limit: 5, currency: "EUR" });
+      return [product];
+    };
+    const result = await (await import("./deal-scanner.js")).scanProviderDeals({
+      providerId: "catalog-demo",
+      capabilities: ["PRODUCT_SEARCH"],
+      searchProducts,
+    }, {
+      query: " camera ",
+      limit: 5,
+      currency: "EUR",
+      costs,
+      context,
+    });
+    expect(result).toHaveLength(1);
+    expect(result[0].externalId).toBe("sku-42");
+  });
+
+  it("fails closed when search capability is missing or provider returns no products", async () => {
+    const request = { query: "camera", limit: 5, currency: "EUR", costs, context };
+    await expect((await import("./deal-scanner.js")).scanProviderDeals({
+      providerId: "no-search",
+      capabilities: [],
+    }, request)).rejects.toThrow(/PRODUCT_SEARCH/);
+
+    const empty = await (await import("./deal-scanner.js")).scanProviderDeals({
+      providerId: "empty",
+      capabilities: ["PRODUCT_SEARCH"],
+      searchProducts: async () => [],
+    }, request);
+    expect(empty).toEqual([]);
+  });
+
+  it("rejects oversized provider results and invalid request limits", async () => {
+    const provider = {
+      providerId: "catalog-demo",
+      capabilities: ["PRODUCT_SEARCH"],
+      searchProducts: async () => [product, { ...product, externalId: "sku-43" }],
+    };
+    await expect((await import("./deal-scanner.js")).scanProviderDeals(provider, {
+      query: "camera", limit: 1, currency: "EUR", costs, context,
+    })).rejects.toThrow(/more products/);
+    await expect((await import("./deal-scanner.js")).scanProviderDeals(provider, {
+      query: "camera", limit: 51, currency: "EUR", costs, context,
+    })).rejects.toThrow(/limit/);
+  });
+});
+
