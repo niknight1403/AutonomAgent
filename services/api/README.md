@@ -126,7 +126,7 @@ The verifier is used by the Fastify routes below. There is no password reset or 
 
 The Prisma `RefreshSession` model and migration `20261117010000_auth_sessions` are committed. The migration has **not** been applied. Passwords must be at least 12 and no more than 128 UTF-8 bytes. Existing user creation and initial ADMIN bootstrap are intentionally not exposed; provision the first administrator through a controlled out-of-band process. Never make public self-registration assign ADMIN.
 
-The Fastify login, refresh and logout routes use these primitives. Refresh tokens are returned only in response bodies and must never be logged; mobile clients should store them in platform secure storage. The first ADMIN must be provisioned out of band. Before public production exposure, add distributed gateway-level throttling, key rotation, security audit events, TLS enforcement at the ingress, and operational session cleanup. The in-process rate limiter below is defense in depth, not a multi-instance abuse-control system.
+The Fastify login, refresh and logout routes use these primitives. Refresh tokens are returned only in response bodies and must never be logged; mobile clients should store them in platform secure storage. The first ADMIN must be provisioned out of band. Before public production exposure, add key rotation, TLS enforcement at the ingress, and operational session cleanup. The PostgreSQL-backed atomic rate limiter is shared across API instances; database unavailability fails authentication closed.
 
 ### Authenticated HTTP routes (RBAC)
 
@@ -143,7 +143,7 @@ The Fastify login, refresh and logout routes use these primitives. Refresh token
 
 Access control is enforced per request: `authenticateBearerToken` verifies the signature and then reloads the user's role and `disabledAt` from PostgreSQL, so a role change or a disabled account takes effect without waiting for the token to expire. Cent amounts are serialized as strings to keep them JSON-safe.
 
-The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login, refresh and logout currently have a bounded in-process fixed-window limiter (5 requests per minute per IP and endpoint), a 16 KiB request-body limit, and proxy-header trust disabled. This limiter is process-local and resets on restart; production must additionally throttle at a shared gateway or distributed rate-limit service. The API does not currently implement password reset, self-registration, cookie sessions, CSRF tokens, signing-key rotation, security audit events, or automatic expired-session cleanup.
+The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login, refresh and logout use a PostgreSQL-backed atomic fixed-window limiter (5 requests per minute per IP and endpoint), shared across API instances; database unavailability fails auth requests closed. The API applies a 16 KiB request-body limit and does not trust proxy headers. Password reset, self-registration, cookie sessions, CSRF tokens and signing-key rotation are not implemented.
 
 
 ### Refresh-session maintenance
@@ -164,7 +164,7 @@ Production authentication requires all of the following before opening the servi
 
 - `DATABASE_URL` pointing to PostgreSQL with the reviewed Prisma migrations applied.
 - `AUTH_SIGNING_SECRET` generated from at least 32 cryptographically random bytes and stored only in the server secret manager.
-- `AUTH_RATE_LIMIT_REDIS_REST_URL` and `AUTH_RATE_LIMIT_REDIS_TOKEN` for the HTTPS Redis REST endpoint. Production auth requests fail closed with HTTP 503 if these are absent or Redis is unavailable. The in-memory limiter is for local development/test only.
+- `No Redis credentials are required. Authentication throttling is stored in PostgreSQL using an atomic upsert and shared across API instances.
 - `TRADING_MODE=PAPER`, `LIVE_TRADING_ENABLED=false`, and `EMERGENCY_STOP=true`.
 
 Create the first administrator only from a trusted operator shell after migrations are applied:
@@ -188,11 +188,11 @@ The cleanup command repeats bounded batches until fewer than 500 stale rows rema
 
 ### Deployment acceptance checklist
 
-1. Provision PostgreSQL and Redis REST credentials in the deployment secret manager; never add secret values to GitHub source files or Expo public variables.
+1. Provision PostgreSQL and PostgreSQL in the deployment secret manager; never add secret values to GitHub source files or Expo public variables.
 2. Apply migrations with `npx prisma migrate deploy --schema services/api/prisma/schema.prisma`.
 3. Run `npm ci`, Prisma generation, `npm run typecheck`, `npm test`, and the API build in CI.
 4. Bootstrap the first ADMIN using the controlled command above.
-5. Verify login, refresh-token one-time rotation, logout, viewer/ADMIN route access, audit event creation, and Redis rate limiting against the deployed staging environment.
+5. Verify login, refresh-token one-time rotation, logout, viewer/ADMIN route access, audit event creation, and PostgreSQL-backed rate limiting against the deployed staging environment.
 6. Configure a scheduler for session cleanup and database backups/restore tests.
 7. Keep PAPER mode and the emergency stop enabled. Do not enable any live purchasing or order execution without separate provider integrations, explicit human approval, and a successful safety review.
 
@@ -208,3 +208,8 @@ A successful Git push is not proof of deployment. No production secrets, databas
 - No provider configured means the scan returns `DEAL_PROVIDER_UNAVAILABLE`; the system does not invent products or substitute demo data.
 
 The scan endpoint does not place orders, reserve funds, create marketplace listings, or initiate payments. Deal approval remains a separate ADMIN review step and is not purchase authorization.
+
+
+### Current shared authentication throttling
+
+Authentication endpoints use `AuthRateLimitBucket` in PostgreSQL. A single `INSERT ... ON CONFLICT DO UPDATE` operation atomically increments each hashed client/route bucket, so multiple API instances share the same fixed-window limit. The raw IP/route key is not persisted. The migration is `20261117030000_auth_rate_limit_buckets`. No external Redis service or Redis REST secrets are required. Keep this database reachable; auth routes fail closed if the database-backed limiter cannot run.
