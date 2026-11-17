@@ -7,10 +7,8 @@ import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } fr
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
 import { listAuditEvents, writeAuditEvent } from "./audit-service.js";
+import { InMemoryAuthRateLimiter, RedisRestAuthRateLimiter } from "./auth-rate-limit.js";
 
-const AUTH_RATE_WINDOW_MS = 60_000;
-const AUTH_RATE_MAX = 5;
-const AUTH_RATE_BUCKET_LIMIT = 10_000;
 
 export interface ServerDependencies {
   prisma: PrismaClient;
@@ -27,6 +25,7 @@ const MAX_DEAL_LIMIT = 100;
 
 const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   AUTH_SIGNING_SECRET_NOT_CONFIGURED: 503,
+  AUTH_RATE_LIMIT_REDIS_UNAVAILABLE: 503,
   AUTHENTICATION_REQUIRED: 401,
   AUTH_TOKEN_INVALID: 401,
   AUTH_TOKEN_EXPIRED_OR_NOT_ACTIVE: 401,
@@ -83,32 +82,30 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     bodyLimit: 16 * 1024,
     trustProxy: false,
   });
-  const authRateBuckets = new Map<string, { windowStartedAt: number; count: number }>();
+  const redisUrl = process.env.AUTH_RATE_LIMIT_REDIS_REST_URL;
+  const redisToken = process.env.AUTH_RATE_LIMIT_REDIS_TOKEN;
+  const rateLimiter = redisUrl && redisToken
+    ? new RedisRestAuthRateLimiter(redisUrl, redisToken)
+    : new InMemoryAuthRateLimiter();
 
-  function authRateLimit(request: FastifyRequest, reply: FastifyReply): boolean {
-    const timestamp = now().getTime();
-    const key = `${request.ip}:${request.routeOptions.url ?? request.url.split("?")[0]}`;
-    let bucket = authRateBuckets.get(key);
-    if (!bucket || timestamp - bucket.windowStartedAt >= AUTH_RATE_WINDOW_MS) {
-      if (authRateBuckets.size >= AUTH_RATE_BUCKET_LIMIT) {
-        for (const [candidate, value] of authRateBuckets) {
-          if (timestamp - value.windowStartedAt >= AUTH_RATE_WINDOW_MS) authRateBuckets.delete(candidate);
-        }
-      }
-      if (authRateBuckets.size >= AUTH_RATE_BUCKET_LIMIT) {
-        reply.header("Retry-After", "60").code(429).send({ error: "AUTH_RATE_LIMITED" });
-        return false;
-      }
-      bucket = { windowStartedAt: timestamp, count: 0 };
-      authRateBuckets.set(key, bucket);
-    }
-    bucket.count += 1;
-    if (bucket.count > AUTH_RATE_MAX) {
-      const retrySeconds = Math.max(1, Math.ceil((AUTH_RATE_WINDOW_MS - (timestamp - bucket.windowStartedAt)) / 1000));
-      reply.header("Retry-After", String(retrySeconds)).code(429).send({ error: "AUTH_RATE_LIMITED" });
+  async function authRateLimit(request: FastifyRequest, reply: FastifyReply): Promise<boolean> {
+    if (process.env.NODE_ENV === "production" && !(redisUrl && redisToken)) {
+      reply.code(503).send({ error: "AUTH_RATE_LIMIT_REDIS_UNAVAILABLE" });
       return false;
     }
-    return true;
+    const key = `${request.ip}:${request.routeOptions.url ?? request.url.split("?")[0]}`;
+    try {
+      const decision = await rateLimiter.consume(key, now().getTime());
+      if (!decision.allowed) {
+        reply.header("Retry-After", String(decision.retryAfterSeconds)).code(429).send({ error: "AUTH_RATE_LIMITED" });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      request.log.error({ err: error }, "authentication rate limiter unavailable");
+      reply.code(503).send({ error: "AUTH_RATE_LIMIT_REDIS_UNAVAILABLE" });
+      return false;
+    }
   }
 
   await app.register(helmet);
@@ -151,7 +148,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
 
   app.post("/v1/auth/login", async (request, reply) => {
     reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");
-    if (!authRateLimit(request, reply)) return;
+    if (!(await authRateLimit(request, reply))) return;
     const body = request.body as { email?: unknown; password?: unknown } | undefined;
     if (!body || Object.keys(body).some((key) => key !== "email" && key !== "password") || typeof body.email !== "string" || !body.email.trim() || body.email.length > 254 || typeof body.password !== "string" || Buffer.byteLength(body.password, "utf8") > 128) {
       return reply.code(400).send({ error: "LOGIN_FIELDS_REQUIRED" });
