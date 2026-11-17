@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run build --workspace @autonomagent/trading-core && tsc -p tsconfig.build.json",
     "start": "node dist/services/api/src/server.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
