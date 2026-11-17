@@ -19,7 +19,7 @@ describe("authentication rate limiter", () => {
       .resolves.toEqual({ allowed: false, retryAfterSeconds: 50 });
     expect(query).toHaveBeenCalledTimes(1);
     const sql = query.mock.calls[0]?.[0] as { sql?: string; values?: unknown[] };
-    expect(sql.sql?.join(" ")).toContain("ON CONFLICT");
+    expect(sql.sql).toContain("ON CONFLICT");
     expect(sql.sql?.join(" ")).toContain("RETURNING");
     expect(JSON.stringify(sql.values)).not.toContain("192.0.2.1");
   });
