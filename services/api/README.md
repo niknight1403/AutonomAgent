@@ -149,3 +149,10 @@ The routes expose review decisions only. There is still no purchase, reservation
 ### Refresh-session maintenance
 
 `src/session-maintenance.ts` provides `cleanupRefreshSessions`, a bounded maintenance primitive. It deletes expired refresh sessions and revoked sessions after a 30-day retention window, selecting at most 500 IDs per invocation. The helper is not exposed as an HTTP endpoint and is not automatically scheduled. Run it only from a trusted maintenance worker with database access, monitor the deleted count, and schedule repeated batches until the backlog is cleared. Session cleanup does not replace token revocation checks during authentication.
+
+
+### Security audit events
+
+The `SecurityAuditEvent` table and `src/audit-service.ts` provide structured audit storage and bounded, descending-time reads. Deal review decisions write their audit event in the same serializable transaction as the status change, so a review cannot commit without its corresponding event. Administrators can read events through `GET /v1/admin/audit`; the route requires a current database-backed ADMIN principal and supports a bounded limit and timestamp cursor.
+
+Apply the migration at `prisma/migrations/20261117020000_security_audit_events/migration.sql` before using these paths. For stronger tamper resistance, use a dedicated database role that has INSERT/SELECT but no UPDATE/DELETE privileges on `SecurityAuditEvent`, restrict direct database access, and export events to separately controlled immutable storage. The application model alone does not make records cryptographically tamper-proof. Authentication lifecycle events are not yet comprehensively wired into this audit stream.
