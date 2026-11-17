@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from "node:crypto";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
@@ -42,6 +43,10 @@ const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   DEAL_LIST_LIMIT_INVALID: 400,
   VISION_INSPECTOR_NOT_CONFIGURED: 503,
   VISION_IMAGE_URL_REQUIRED: 400,
+  TREASURE_ANALYSIS_IDEMPOTENCY_REQUIRED: 400,
+  TREASURE_ANALYSIS_IDEMPOTENCY_CONFLICT: 409,
+  TREASURE_ANALYSIS_INPUT_INVALID: 400,
+  AGENT_TASK_NOT_FOUND: 404,
 });
 
 /** BigInt cents and Date values are normalised so the payload stays JSON-safe. */
@@ -194,6 +199,60 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     }
   });
 
+  app.post("/v1/deals/:dealId/treasure-analysis", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      const { dealId } = request.params as { dealId: string };
+      const body = request.body as { imageUrl?: unknown } | undefined;
+      const imageUrl = body?.imageUrl;
+      if (typeof imageUrl !== "string" || imageUrl.length > 2048 || !imageUrl.startsWith("https://")) {
+        throw new Error("TREASURE_ANALYSIS_INPUT_INVALID");
+      }
+      const suppliedKey = request.headers["x-idempotency-key"];
+      if (typeof suppliedKey !== "string" || suppliedKey.length < 8 || suppliedKey.length > 128) {
+        throw new Error("TREASURE_ANALYSIS_IDEMPOTENCY_REQUIRED");
+      }
+      const deal = await prisma.dealCandidate.findUnique({ where: { id: dealId } });
+      if (!deal) throw new Error("DEAL_CANDIDATE_NOT_FOUND");
+      const input = { dealId: deal.id, imageUrl, title: deal.title, productUrl: deal.productUrl,
+        purchasePriceMinor: deal.purchasePriceMinor.toString(), totalCostCents: deal.totalCostCents.toString(),
+        currency: deal.currency };
+      const inputHash = createHash("sha256").update(JSON.stringify(input)).digest("hex");
+      const idempotencyKey = createHash("sha256").update(principal.userId + ":" + suppliedKey).digest("hex");
+      const existing = await prisma.agentTask.findUnique({ where: { idempotencyKey } });
+      if (existing) {
+        if (existing.inputHash !== inputHash) throw new Error("TREASURE_ANALYSIS_IDEMPOTENCY_CONFLICT");
+        return reply.code(202).send({ taskId: existing.id, status: existing.status,
+          correlationId: existing.correlationId, execution: "PENDING_WORKER" });
+      }
+      const correlationId = randomUUID();
+      const task = await prisma.$transaction(async (tx) => {
+        const created = await tx.agentTask.create({ data: { ownerId: principal.userId,
+          taskType: "HIDDEN_TREASURE_ANALYSIS", status: "QUEUED", input, inputHash,
+          correlationId, idempotencyKey, maxAttempts: 3 } });
+        await tx.outboxEvent.create({ data: { eventType: "hidden_treasure.analysis.requested",
+          aggregateId: created.id, correlationId, payload: { taskId: created.id, taskType: created.taskType } } });
+        return created;
+      });
+      return reply.code(202).send({ taskId: task.id, status: task.status, correlationId,
+        execution: "PENDING_WORKER" });
+    } catch (error) { return fail(reply, error); }
+  });
+
+  app.get("/v1/treasure-analyses/:taskId", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      const { taskId } = request.params as { taskId: string };
+      const task = await prisma.agentTask.findUnique({ where: { id: taskId } });
+      if (!task || (task.ownerId !== principal.userId && principal.role !== "ADMIN") ||
+          task.taskType !== "HIDDEN_TREASURE_ANALYSIS") throw new Error("AGENT_TASK_NOT_FOUND");
+      return reply.code(200).send({ taskId: task.id, status: task.status, result: task.result,
+        correlationId: task.correlationId, attempt: task.attempt,
+        createdAt: task.createdAt.toISOString(), updatedAt: task.updatedAt.toISOString(),
+        finishedAt: task.finishedAt?.toISOString() ?? null, hasError: Boolean(task.lastError) });
+    } catch (error) { return fail(reply, error); }
+  });
   app.post("/v1/deals/:dealId/vision-inspection", async (request, reply) => {
     try {
       const principal = await principalFrom(request);
