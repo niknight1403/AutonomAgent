@@ -66,7 +66,14 @@ export class ProviderHttpClient {
     signal?: AbortSignal,
   ): Promise<T> {
     const url = new URL(path, this.baseUrl);
-    if (url.origin !== this.baseUrl.origin || !url.pathname.startsWith(this.baseUrl.pathname)) {
+    const basePath = this.baseUrl.pathname.endsWith("/")
+      ? this.baseUrl.pathname
+      : this.baseUrl.pathname + "/";
+    const allowedExactPath = basePath.slice(0, -1);
+    if (
+      url.origin !== this.baseUrl.origin ||
+      (url.pathname !== allowedExactPath && !url.pathname.startsWith(basePath))
+    ) {
       throw new ProviderHttpError("Provider request path escaped the configured base URL");
     }
     for (const [key, value] of Object.entries(query)) {
@@ -110,10 +117,33 @@ export class ProviderHttpClient {
       if (declaredLength > this.maxResponseBytes) {
         throw new ProviderHttpError("Provider response exceeded the configured size limit");
       }
-      const body = await response.text();
-      if (new TextEncoder().encode(body).byteLength > this.maxResponseBytes) {
-        throw new ProviderHttpError("Provider response exceeded the configured size limit");
+      if (!response.body) {
+        throw new ProviderHttpError("Provider response body was empty");
       }
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let receivedBytes = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          receivedBytes += value.byteLength;
+          if (receivedBytes > this.maxResponseBytes) {
+            await reader.cancel();
+            throw new ProviderHttpError("Provider response exceeded the configured size limit");
+          }
+          chunks.push(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      const bytes = new Uint8Array(receivedBytes);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      const body = new TextDecoder().decode(bytes);
       try {
         return JSON.parse(body) as T;
       } catch {
