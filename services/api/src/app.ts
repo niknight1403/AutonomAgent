@@ -197,11 +197,16 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     }
     try {
       const tokens = await rotateRefreshToken(prisma, body.refreshToken, signingSecret(), now());
-      await writeAuditEvent(prisma, {
-        action: "AUTH_REFRESH",
-        outcome: "SUCCESS",
-        requestId: request.id,
-      });
+      try {
+        await writeAuditEvent(prisma, {
+          action: "AUTH_REFRESH",
+          outcome: "SUCCESS",
+          requestId: request.id,
+        });
+      } catch (auditError) {
+        await revokeRefreshToken(prisma, tokens.refreshToken, now());
+        throw auditError;
+      }
       return reply.code(200).send(tokens);
     } catch (error) {
       return fail(reply, error);
