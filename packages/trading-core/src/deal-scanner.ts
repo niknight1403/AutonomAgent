@@ -1,4 +1,4 @@
-import { calculateNetProfit, evaluateRisk, type ProfitInput, type RiskLimits } from "./index";
+import { calculateNetProfit, evaluateRisk, type ProfitInput, type RiskLimits } from "./index.js";
 
 export interface DealProduct {
   providerId: string;
