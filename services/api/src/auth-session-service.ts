@@ -154,6 +154,14 @@ export async function rotateRefreshToken(
   const nextRefreshToken = createRefreshToken();
   const nextExpiresAt = new Date(now.getTime() + REFRESH_TTL_MS);
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+    // Re-check account state inside the rotation transaction. A user disabled
+    // after the initial lookup must not receive another refresh session.
+    const currentUser = await tx.user.findUnique({
+      where: { id: existing.userId },
+      select: { disabledAt: true },
+    });
+    if (!currentUser || currentUser.disabledAt) throw new Error("INVALID_REFRESH_TOKEN");
+
     const claimed = await tx.refreshSession.updateMany({
       where: { id: existing.id, revokedAt: null, expiresAt: { gt: now } },
       data: { revokedAt: now },
