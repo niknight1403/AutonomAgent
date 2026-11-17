@@ -12,6 +12,10 @@ export interface ServerDependencies {
   /** HS256 signing secret for access tokens; unset means the auth routes stay closed. */
   authSigningSecret?: string | undefined;
   now?: () => Date;
+  /** Optional allowlist-enforcing vision worker adapter; absent means inspection stays unavailable. */
+  visionInspector?: {
+    inspectItemVisuals(imageUrl: string, hintTitle: string): Promise<Record<string, unknown>>;
+  };
 }
 
 type ReviewDecision = "APPROVED" | "REJECTED" | "ARCHIVED";
@@ -36,6 +40,8 @@ const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   DEAL_NOT_ELIGIBLE_FOR_REVIEW_APPROVAL: 422,
   DEAL_REVIEW_FIELDS_REQUIRED: 400,
   DEAL_LIST_LIMIT_INVALID: 400,
+  VISION_INSPECTOR_NOT_CONFIGURED: 503,
+  VISION_IMAGE_URL_REQUIRED: 400,
 });
 
 /** BigInt cents and Date values are normalised so the payload stays JSON-safe. */
@@ -183,6 +189,33 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
         ...(limit === undefined ? {} : { limit }),
       });
       return reply.code(200).send({ deals: deals.map(serializeDeal) });
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
+  app.post("/v1/deals/:dealId/vision-inspection", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      if (!dependencies.visionInspector) throw new Error("VISION_INSPECTOR_NOT_CONFIGURED");
+      const { dealId } = request.params as { dealId: string };
+      const body = request.body as { imageUrl?: unknown } | undefined;
+      if (typeof body?.imageUrl !== "string" || !body.imageUrl.trim() || body.imageUrl.length > 2048) {
+        return reply.code(400).send({ error: "VISION_IMAGE_URL_REQUIRED" });
+      }
+      const deal = await prisma.dealCandidate.findUnique({ where: { id: dealId } });
+      if (!deal) throw new Error("DEAL_CANDIDATE_NOT_FOUND");
+      const inspection = await dependencies.visionInspector.inspectItemVisuals(
+        body.imageUrl,
+        deal.title,
+      );
+      return reply.code(200).send({
+        dealId: deal.id,
+        inspection,
+        purchaseAuthorized: false,
+        authenticityVerified: false,
+      });
     } catch (error) {
       return fail(reply, error);
     }
