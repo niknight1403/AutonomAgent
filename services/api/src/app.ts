@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } from "./auth-service.js";
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
 import { listDealCandidates, reviewDealCandidate } from "./deal-candidate-service.js";
+import { listAuditEvents } from "./audit-service.js";
 
 const AUTH_RATE_WINDOW_MS = 60_000;
 const AUTH_RATE_MAX = 5;
@@ -40,6 +41,7 @@ const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   DEAL_NOT_ELIGIBLE_FOR_REVIEW_APPROVAL: 422,
   DEAL_REVIEW_FIELDS_REQUIRED: 400,
   DEAL_LIST_LIMIT_INVALID: 400,
+  AUDIT_LIST_LIMIT_INVALID: 400,
 });
 
 /** BigInt cents and Date values are normalised so the payload stays JSON-safe. */
@@ -225,6 +227,48 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
         ...(limit === undefined ? {} : { limit }),
       });
       return reply.code(200).send({ deals: deals.map(serializeDeal) });
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
+
+  app.get("/v1/admin/audit", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      const query = request.query as Record<string, unknown>;
+      let limit: number | undefined;
+      if (query.limit !== undefined) {
+        const parsed = Number(query.limit);
+        if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100) {
+          return reply.code(400).send({ error: "AUDIT_LIST_LIMIT_INVALID" });
+        }
+        limit = parsed;
+      }
+      let before: Date | undefined;
+      if (query.before !== undefined) {
+        if (typeof query.before !== "string" || !Number.isFinite(Date.parse(query.before))) {
+          return reply.code(400).send({ error: "AUDIT_CURSOR_INVALID" });
+        }
+        before = new Date(query.before);
+      }
+      const events = await listAuditEvents(prisma, {
+        ...(limit === undefined ? {} : { limit }),
+        ...(before === undefined ? {} : { before }),
+      });
+      return reply.code(200).send({
+        events: events.map((event) => ({
+          id: event.id,
+          actorUserId: event.actorUserId,
+          action: event.action,
+          targetType: event.targetType,
+          targetId: event.targetId,
+          requestId: event.requestId,
+          outcome: event.outcome,
+          metadata: event.metadata,
+          createdAt: event.createdAt.toISOString(),
+        })),
+      });
     } catch (error) {
       return fail(reply, error);
     }
