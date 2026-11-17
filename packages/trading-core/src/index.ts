@@ -68,3 +68,9 @@ export * from "./strategy-signals.js";
 export * from "./strategy-allocation.js";
 
 export * from "./strategy-backtest.js";
+
+export * from "./research-pipeline.js";
+
+export * from "./backtest-optimization.js";
+
+export * from "./live-paper-simulation.js";
