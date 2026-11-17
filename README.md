@@ -10,14 +10,41 @@ AutonomAgent is an Android-first, Expo/React Native TypeScript workspace for res
 - **Financial figures:** demo values are labelled; no simulated value is represented as realized revenue
 - **Secrets:** provider credentials belong on the server, never in the mobile app or `EXPO_PUBLIC_*`
 
-This repository is an initial, safe foundation. It is **not** a production trading system and does not yet contain verified marketplace checkout, settlement, or APK release evidence.
+This repository contains a working Vision analysis code path, but it is not yet a deployed production service. Marketplace sold-data integration, verified marketplace checkout, settlement, Android APK signing/distribution, and production deployment evidence are not included.
+
+## Vision specialist swarm
+
+The Vision workflow is an asynchronous, server-side analysis pipeline:
+
+1. An ADMIN queues an analysis for an existing product candidate with an HTTPS image URL.
+2. The API writes an idempotent `AgentTask` and an audit `OutboxEvent` in one database transaction.
+3. The API task worker claims jobs using a database lease and calls the private Python Vision service.
+4. The Vision service checks the image source against an exact hostname allowlist, downloads bounded image data, and invokes the configured vision model.
+5. Six specialists run in parallel: visual identification, market research, collector rarity, technical/parts, restoration, and risk/authenticity.
+6. Results and evidence gaps are persisted on the task and shown in the Android client.
+
+Market research deliberately remains `SKIPPED` until a real sold-listing provider is configured. No model-generated price estimate is presented as verified market evidence. Purchase authorization and authenticity verification are always false.
+
+### Run the Vision stack
+
+- API: `npm run dev --workspace @autonomagent/api`
+- API task worker: `npm run worker --workspace @autonomagent/api`
+- Python service: from `services/vision-worker`, install `pip install -e .` and run `python -m vision_worker.main`
+- Android client: set `EXPO_PUBLIC_API_URL` to the API origin, then run `npm run mobile`
+
+Required server-side environment:
+- API and task worker: `DATABASE_URL`, `AUTH_SIGNING_SECRET`, `VISION_WORKER_URL`, `VISION_WORKER_TOKEN`
+- Python worker: same `VISION_WORKER_TOKEN`, `VISION_ALLOWED_IMAGE_HOSTS` (exact comma-separated hostnames), `LLM_API_KEY`, `LLM_BASE_URL`, `VISION_MODEL`
+- Keep the Python worker on a private network. Never put server secrets in Expo `EXPO_PUBLIC_*` variables.
+- Configure outbound network policy to block private, loopback, link-local, and cloud metadata IP ranges; DNS checks alone cannot prevent DNS rebinding.
 
 ## Workspace
 
-- `apps/mobile` — Expo Android client
-- `services/api` — planned server-side API boundary and integration notes
-- `packages/trading-core` — pure risk/profit calculation primitives
-- `docs` — architecture and release gates
+- `apps/mobile` — Expo Android client with authenticated Vision task submission and live status polling
+- `services/api` — Fastify API, durable task queue, and task dispatcher
+- `services/vision-worker` — Python image inspection and six-specialist orchestration
+- `packages/trading-core` — PAPER-only risk/profit calculation primitives
+- `docs` — architecture, deployment, and release gates
 
 The trading core also contains three PAPER-only strategy research primitives:
 explainable feature-based signals, risk-bounded portfolio allocation, and
