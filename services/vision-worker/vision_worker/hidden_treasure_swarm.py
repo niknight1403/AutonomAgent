@@ -37,6 +37,7 @@ class SpecialistFinding(BaseModel):
     role: SpecialistRole
     status: str = Field(pattern="^(SUCCEEDED|FAILED|SKIPPED)$")
     summary: str = Field(max_length=4000)
+    identified_model: str | None = Field(default=None, max_length=200)
     facts: list[str] = Field(default_factory=list, max_length=30)
     evidence_urls: list[str] = Field(default_factory=list, max_length=30)
     confidence: float = Field(ge=0, le=1)
@@ -156,12 +157,13 @@ class HiddenTreasureSwarm:
 
         conflicts: list[str] = []
         identified_models = {
-            fact.casefold()
-            for finding in findings if finding.role == SpecialistRole.VISUAL
-            for fact in finding.facts if fact.strip()
+            finding.identified_model.strip().casefold()
+            for finding in findings
+            if finding.role in (SpecialistRole.VISUAL, SpecialistRole.TECHNICAL)
+            and finding.identified_model and finding.identified_model.strip()
         }
         if len(identified_models) > 1:
-            conflicts.append("Visual specialist returned multiple potentially conflicting identifiers.")
+            conflicts.append("Visual and technical specialists disagree on the identified model.")
         if any(f.status == "FAILED" for f in findings):
             conflicts.append("One or more specialists failed; conclusions are incomplete.")
         if any(f.status == "SKIPPED" for f in findings):
