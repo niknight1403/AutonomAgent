@@ -46,3 +46,14 @@ No marketplace adapter is connected by this change. The contract deliberately ex
 
 This is transport hardening, not a marketplace integration. No provider host is configured, no secret is provisioned, and no external marketplace request is made by the application at this stage. The response size limit is enforced while streaming the response body, before the full payload is buffered. A declared content length is also checked early. Keep an independent egress/proxy limit in production as defense in depth.
 
+
+### Server-side provider configuration
+
+`loadProviderRuntimeConfig(providerId, process.env)` reads only the API process environment. For each configured provider, set:
+- `PROVIDER_<ID>_BASE_URL`
+- `PROVIDER_<ID>_ALLOWED_HOSTS` (comma-separated exact hostnames; no wildcards)
+- optional `PROVIDER_<ID>_API_TOKEN` (opaque server-side token)
+
+The loader rejects partial configuration, non-HTTPS endpoints, host mismatches, wildcard hosts, URL credentials/query/fragment, and malformed provider IDs. When no provider variables exist, the provider is returned as disabled. Never serialize the resulting config object, log it, expose it in API responses, or pass it to the mobile application because it may contain a credential. Supply secrets through the deployment platform's secret manager/environment injection; do not commit real values or place them in `EXPO_PUBLIC_*` variables.
+
+This remains configuration plumbing only: no marketplace provider has been selected or connected, and no network request is made during configuration loading. A real adapter must be implemented against a named provider's official read API, validate provider responses, and declare only capabilities actually supported by that API.
