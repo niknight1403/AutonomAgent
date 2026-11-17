@@ -1,6 +1,6 @@
 {
   "name": "@autonomagent/api",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,7 +15,7 @@
     "@fastify/helmet": "^13.0.1",
     "@prisma/client": "^6.5.0",
     "fastify": "^5.2.1",
-    "@autonomagent/trading-core": "0.2.0"
+    "@autonomagent/trading-core": "0.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.13.4",
