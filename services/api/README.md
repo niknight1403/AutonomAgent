@@ -57,3 +57,15 @@ This is transport hardening, not a marketplace integration. No provider host is 
 The loader rejects partial configuration, non-HTTPS endpoints, host mismatches, wildcard hosts, URL credentials/query/fragment, and malformed provider IDs. When no provider variables exist, the provider is returned as disabled. Never serialize the resulting config object, log it, expose it in API responses, or pass it to the mobile application because it may contain a credential. Supply secrets through the deployment platform's secret manager/environment injection; do not commit real values or place them in `EXPO_PUBLIC_*` variables.
 
 This remains configuration plumbing only: no marketplace provider has been selected or connected, and no network request is made during configuration loading. A real adapter must be implemented against a named provider's official read API, validate provider responses, and declare only capabilities actually supported by that API.
+
+
+### Generic read-only Catalog REST adapter
+
+A generic contract adapter is now available in `src/providers/catalog-rest-adapter.ts`. It expects:
+- `GET /health`
+- `GET /products?q=<query>&limit=<1..50>&currency=<ISO-4217>`
+- a JSON response shaped as `{ "items": [{ "id", "title", "url", "currency", "priceMinor", "observedAt" }] }`
+
+Product payloads are validated and normalized; product links must use HTTPS. The adapter advertises only `PRODUCT_SEARCH`. It has no purchase, listing, payment, or order mutation methods. `bootstrap.ts` registers it only when the `PROVIDER_CATALOG_DEMO_*` server environment is configured.
+
+This is a generic integration contract and test fixture, not a connection to eBay, Amazon, Shopify, or another real marketplace. No provider endpoint or credentials are supplied by default. The registry is not yet exposed through an HTTP route because authenticated sessions and provider-specific authorization are not implemented. Do not enable this adapter against a real service until its official API contract, terms, credentials, and response schema have been reviewed.
