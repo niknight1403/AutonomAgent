@@ -109,23 +109,37 @@ export async function reviewDealCandidate(
   input: { dealId: string; reviewerId: string; decision: "APPROVED" | "REJECTED" | "ARCHIVED" },
 ) {
   if (!input.dealId.trim() || !input.reviewerId.trim()) throw new Error("DEAL_REVIEW_FIELDS_REQUIRED");
-  const current = await prisma.dealCandidate.findUnique({ where: { id: input.dealId } });
-  if (!current) throw new Error("DEAL_CANDIDATE_NOT_FOUND");
-  if (input.decision === "APPROVED" && (current.simulated || !current.riskPassed)) {
-    throw new Error("DEAL_NOT_ELIGIBLE_FOR_REVIEW_APPROVAL");
-  }
-  const changed = await prisma.dealCandidate.updateMany({
-    where: {
-      id: input.dealId,
-      reviewStatus: "DISCOVERED",
-      updatedAt: current.updatedAt,
-    },
-    data: {
-      reviewStatus: input.decision,
-      reviewedBy: input.reviewerId,
-      reviewedAt: new Date(),
-    },
-  });
-  if (changed.count !== 1) throw new Error("DEAL_REVIEW_CONFLICT");
-  return prisma.dealCandidate.findUniqueOrThrow({ where: { id: input.dealId } });
+  return prisma.$transaction(async (tx) => {
+    const current = await tx.dealCandidate.findUnique({ where: { id: input.dealId } });
+    if (!current) throw new Error("DEAL_CANDIDATE_NOT_FOUND");
+    if (input.decision === "APPROVED" && (current.simulated || !current.riskPassed)) {
+      throw new Error("DEAL_NOT_ELIGIBLE_FOR_REVIEW_APPROVAL");
+    }
+    const reviewedAt = new Date();
+    const changed = await tx.dealCandidate.updateMany({
+      where: {
+        id: input.dealId,
+        reviewStatus: "DISCOVERED",
+        updatedAt: current.updatedAt,
+      },
+      data: {
+        reviewStatus: input.decision,
+        reviewedBy: input.reviewerId,
+        reviewedAt,
+      },
+    });
+    if (changed.count !== 1) throw new Error("DEAL_REVIEW_CONFLICT");
+    const reviewed = await tx.dealCandidate.findUniqueOrThrow({ where: { id: input.dealId } });
+    await tx.securityAuditEvent.create({
+      data: {
+        actorUserId: input.reviewerId,
+        action: "DEAL_REVIEW",
+        targetType: "DealCandidate",
+        targetId: input.dealId,
+        outcome: "SUCCESS",
+        metadata: { decision: input.decision, previousStatus: current.reviewStatus },
+      },
+    });
+    return reviewed;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }
