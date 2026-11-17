@@ -88,7 +88,7 @@ The scanner currently accepts EUR only; it rejects other currencies rather than 
 
 The same package also exports `scanProviderDeals(provider, request, signal?)`. This composes a provider's declared `PRODUCT_SEARCH` capability with the analysis function: it bounds query/limit, requires EUR until conversion is implemented, propagates abort signals, rejects over-sized provider responses, and analyzes only records actually returned by that provider. An empty provider response stays empty; no sample products are substituted.
 
-This pipeline is currently a reusable core function, not an HTTP endpoint. The API deliberately does not expose it publicly until authenticated sessions, authorization, and persisted audit controls are in place.
+This pipeline is currently a reusable core function, not an HTTP endpoint. It is not automatically scheduled and is not exposed publicly.
 
 
 ### Persisted deal review queue
@@ -104,14 +104,14 @@ Migration `20261117014300_deal_candidates` adds this table and runs after `20261
 
 `src/deal-scan-service.ts` now connects the configured provider registry to the shared trading-core scanner and the persistent review queue. `runAndPersistDealScan` resolves only a registered provider with `PRODUCT_SEARCH`, analyzes the provider's actual read-only results, checks cancellation before persistence, and stores the resulting candidates. Its return value contains counts only, not provider credentials or raw payloads.
 
-This is an internal service function, not a public route or an automatically scheduled job. It must be called only by a future authenticated, authorized operator workflow. The API workspace declares the shared trading-core dependency; its TypeScript build emits the shared source under the API build output, so the production start script targets `dist/services/api/src/server.js`. The lockfile was updated with the workspace dependency. No install, typecheck, test, migration, or deployment has been run as part of this source change.
+This is an internal service function, not an automatically scheduled job or public route. It must be called only by an authenticated, authorized operator workflow. The API workspace declares the shared trading-core dependency; its TypeScript build emits the shared source under the API build output, so the production start script targets `dist/services/api/src/server.js`. The lockfile was updated with the workspace dependency. No install, typecheck, test, migration, or deployment has been run as part of this source change.
 
 
 ### Authentication and database-backed RBAC primitive
 
 `src/auth-service.ts` adds a reusable bearer-token verifier for short-lived HS256 JWT access tokens. It requires a server-side signing secret of at least 32 bytes, a fixed issuer/audience, a maximum 15-minute token lifetime, valid time claims, and a valid signature. It then reloads the user's current role and disabled state from PostgreSQL; any role claim embedded in the token is ignored. `requireAdmin` checks that database-backed principal.
 
-This is an authentication primitive only. There is deliberately no login/token-issuing endpoint, password reset flow, refresh-token store, session revocation system, or public deal-review route yet. A trusted issuer must provision tokens using the documented issuer/audience and HS256 contract, and the API deployment must supply the same high-entropy secret through its secret manager. Do not put this secret in the mobile app, source control, or `EXPO_PUBLIC_*`. Until a trusted issuer, key rotation, rate limiting, audit logging, and authenticated route integration are in place, the review queue remains internal and inaccessible over HTTP. The test suite has been added but has not been executed in this environment.
+The verifier is used by the Fastify routes below. There is no password reset or public self-registration flow. Provision the first administrator through a controlled out-of-band process. The API deployment must supply a high-entropy signing secret through its secret manager; never put it in the mobile app, source control, or `EXPO_PUBLIC_*`.
 
 
 ### Password login and rotating refresh sessions
@@ -126,7 +126,7 @@ This is an authentication primitive only. There is deliberately no login/token-i
 
 The Prisma `RefreshSession` model and migration `20261117010000_auth_sessions` are committed. The migration has **not** been applied. Passwords must be at least 12 and no more than 128 UTF-8 bytes. Existing user creation and initial ADMIN bootstrap are intentionally not exposed; provision the first administrator through a controlled out-of-band process. Never make public self-registration assign ADMIN.
 
-These are internal service primitives only. No login, refresh, logout, or deal-review HTTP routes are wired to Fastify yet. Before exposing them, add strict request schemas, TLS-only deployment, login rate limiting and abuse controls, CSRF protection if cookies are used, key rotation strategy, security audit events, and operational session cleanup. Keep refresh tokens out of logs and browser local storage; mobile clients should use platform secure storage. The API must receive the signing secret from its deployment secret manager. The added unit tests have not been executed here.
+The Fastify login, refresh and logout routes use these primitives. Refresh tokens are returned only in response bodies and must never be logged; mobile clients should store them in platform secure storage. The first ADMIN must be provisioned out of band. Before public production exposure, add distributed gateway-level throttling, key rotation, security audit events, TLS enforcement at the ingress, and operational session cleanup. The in-process rate limiter below is defense in depth, not a multi-instance abuse-control system.
 
 ### Authenticated HTTP routes (RBAC)
 
@@ -143,4 +143,4 @@ These are internal service primitives only. No login, refresh, logout, or deal-r
 
 Access control is enforced per request: `authenticateBearerToken` verifies the signature and then reloads the user's role and `disabledAt` from PostgreSQL, so a role change or a disabled account takes effect without waiting for the token to expire. Cent amounts are serialized as strings to keep them JSON-safe.
 
-The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login has no additional rate limiting beyond the constant-time dummy-hash comparison, so a public deployment needs a reverse-proxy or gateway throttle.
+The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login, refresh and logout currently have a bounded in-process fixed-window limiter (5 requests per minute per IP and endpoint), a 16 KiB request-body limit, and proxy-header trust disabled. This limiter is process-local and resets on restart; production must additionally throttle at a shared gateway or distributed rate-limit service. The API does not currently implement password reset, self-registration, cookie sessions, CSRF tokens, signing-key rotation, security audit events, or automatic expired-session cleanup.
