@@ -4,7 +4,7 @@
 
 The isolated Python worker under `services/vision-worker` uses an async OpenAI-compatible client and validates model output with Pydantic. Configure `LLM_API_KEY`, `LLM_BASE_URL`, and `VISION_MODEL` on the worker only. Configure the exact image host allowlist in the worker deployment and pass it as `allowed_hosts`.
 
-The downloader requires HTTPS, an exact allowlisted hostname, public DNS answers, no redirects, a supported image MIME type, matching file signatures, and an 8 MiB maximum. Production deployment must additionally enforce outbound network policy at the container/VPC layer to prevent DNS rebinding and access to metadata/private networks. Do not accept arbitrary user-supplied URLs or treat the model's visual score as an authenticity certificate.
+The downloader requires HTTPS, an exact allowlisted hostname, public DNS answers, no redirects, a supported image MIME type, matching file signatures, and an 8 MiB maximum. Production deployment must additionally enforce outbound network policy at the container/VPC layer to prevent DNS rebinding and access to metadata/private networks. The TypeScript API exposes POST /v1/deals/:dealId/vision-inspection behind ADMIN authorization, but returns 503 VISION_INSPECTOR_NOT_CONFIGURED until the deployment injects a worker adapter implementing inspectItemVisuals(imageUrl, hintTitle). The route uses the stored deal title, returns explicit purchaseAuthorized: false and authenticityVerified: false flags, and does not persist the result yet. Configure a strict image-host allowlist in the worker adapter; do not accept arbitrary user-supplied URLs or treat the model's visual score as an authenticity certificate.
 
 ## Purchase workflow (design boundary; not an active integration)
 
