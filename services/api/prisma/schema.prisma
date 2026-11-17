@@ -144,3 +144,38 @@ model AgentTask {
   @@index([ownerId, createdAt])
   @@index([leaseUntil])
 }
+
+enum DealReviewStatus {
+  DISCOVERED
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+model DealCandidate {
+  id                       String           @id @default(cuid())
+  providerId               String
+  externalId               String
+  title                    String
+  productUrl               String
+  currency                 String           @default("EUR")
+  purchasePriceMinor       BigInt
+  observedAt               DateTime
+  simulated                Boolean          @default(false)
+  totalCostCents           BigInt
+  expectedProfitCents      BigInt
+  roiBasisPoints           BigInt?
+  riskPassed               Boolean
+  riskReasons              Json
+  reviewStatus             DealReviewStatus @default(DISCOVERED)
+  reviewedBy               String?
+  reviewedAt               DateTime?
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+
+  @@unique([providerId, externalId])
+  @@index([reviewStatus, updatedAt])
+  @@index([riskPassed, expectedProfitCents])
+  @@index([observedAt])
+}
+
