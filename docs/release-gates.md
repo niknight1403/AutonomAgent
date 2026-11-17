@@ -21,3 +21,14 @@ Until every relevant gate is evidenced, keep LIVE trading disabled.
 The GitHub Actions workflow at `.github/workflows/ci.yml` checks clean lockfile installation, Prisma client generation/schema validation/migrations against PostgreSQL, API build, workspace typechecks, unit and PostgreSQL integration tests, `npm audit --audit-level=high`, and Android Expo bundling. These checks validate repository changes only; they do not satisfy the production gates above or enable live trading.
 
 Local verification passed after a clean `npm ci`: migrations were current, API build and all workspace checks/tests passed, and the Android bundle exported. GitHub Actions CI Run `43990674018` also passed before publication. The public pre-release `v0.1.0` points to commit `f8176e3603cce88ee40bd20379e249dd69869bca`. The high/critical audit threshold passes; the current dependency tree still reports 11 moderate advisories in the Expo toolchain. Moderate findings are not a formal risk exception and must be triaged again before any production release.
+
+## Android EAS build profiles
+
+The Expo project has EAS profiles in `apps/mobile/eas.json`:
+
+- `preview` produces an internally distributed installable Android APK.
+- `production` produces an Android App Bundle (AAB) and increments the local app version code.
+
+Before the first build, link the Expo project interactively from `apps/mobile` with `npx eas-cli@latest init`. This creates the project association in the Expo app configuration; commit the generated project ID after verifying it belongs to the intended Expo account/project. Authenticate with `npx eas-cli@latest login` (or an `EXPO_TOKEN`/EAS token in CI), then run `npx eas-cli@latest build --platform android --profile preview`.
+
+A successful EAS build is not yet a device-install verification. Download the resulting APK, install it on a supported Android device, and record the build ID and SHA-256 before treating the Android release gate as complete. Do not add Expo credentials or provider secrets to the repository. The EAS profile does not enable LIVE trading; the app remains PAPER-only.
