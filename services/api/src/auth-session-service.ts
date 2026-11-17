@@ -148,7 +148,7 @@ export async function rotateRefreshToken(
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const claimed = await tx.refreshSession.updateMany({
       where: { id: existing.id, revokedAt: null, expiresAt: { gt: now } },
-      data: { revokedAt: now, replacedById: "ROTATED" },
+      data: { revokedAt: now },
     });
     if (claimed.count !== 1) throw new Error("REFRESH_TOKEN_REUSE_OR_RACE");
     const created = await tx.refreshSession.create({
