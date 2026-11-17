@@ -12,6 +12,7 @@ const PASSWORD = "correct horse battery staple";
 const prisma = new PrismaClient();
 const createdUserIds: string[] = [];
 const createdDealIds: string[] = [];
+const createdTaskIds: string[] = [];
 let app: FastifyInstance;
 let adminEmail: string;
 let viewerEmail: string;
@@ -74,10 +75,13 @@ suite("authenticated deal review routes (RBAC)", () => {
 
   afterEach(async () => {
     await prisma.refreshSession.deleteMany({ where: { userId: { in: createdUserIds } } });
+    await prisma.outboxEvent.deleteMany({ where: { aggregateId: { in: createdTaskIds } } });
+    await prisma.agentTask.deleteMany({ where: { id: { in: createdTaskIds } } });
     await prisma.dealCandidate.deleteMany({ where: { id: { in: createdDealIds } } });
     await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     createdUserIds.length = 0;
     createdDealIds.length = 0;
+    createdTaskIds.length = 0;
   });
 
   afterAll(async () => {
@@ -100,6 +104,74 @@ suite("authenticated deal review routes (RBAC)", () => {
     const response = await app.inject({ method: "GET", url: "/v1/deals" });
     expect(response.statusCode).toBe(401);
     expect(response.json()).toEqual({ error: "AUTHENTICATION_REQUIRED" });
+  });
+
+  it("durably queues an ADMIN treasure analysis with idempotency and exposes task status", async () => {
+    const deal = await createDeal();
+    const tokens = await login(adminEmail);
+    const key = "treasure-test-" + process.pid + "-" + sequence;
+    const headers = { authorization: "Bearer " + tokens.accessToken, "x-idempotency-key": key };
+    const url = "/v1/deals/" + deal.id + "/treasure-analysis";
+    const payload = { imageUrl: "https://images.example.test/item.jpg" };
+    const first = await app.inject({ method: "POST", url, headers, payload });
+    expect(first.statusCode).toBe(202);
+    const queued = first.json() as { taskId: string; status: string; execution: string };
+    expect(queued.status).toBe("QUEUED");
+    expect(queued.execution).toBe("PENDING_WORKER");
+    createdTaskIds.push(queued.taskId);
+    expect(await prisma.outboxEvent.count({ where: { aggregateId: queued.taskId } })).toBe(1);
+    const repeated = await app.inject({ method: "POST", url, headers, payload });
+    expect(repeated.statusCode).toBe(202);
+    expect(repeated.json().taskId).toBe(queued.taskId);
+    const status = await app.inject({ method: "GET", url: "/v1/treasure-analyses/" + queued.taskId,
+      headers: { authorization: "Bearer " + tokens.accessToken } });
+    expect(status.statusCode).toBe(200);
+    expect(status.json().status).toBe("QUEUED");
+    expect(status.json().result).toBeNull();
+  });
+
+  it("rejects reuse of a treasure-analysis idempotency key with different input", async () => {
+    const deal = await createDeal();
+    const tokens = await login(adminEmail);
+    const headers = { authorization: "Bearer " + tokens.accessToken,
+      "x-idempotency-key": "treasure-conflict-" + process.pid + "-" + sequence };
+    const url = "/v1/deals/" + deal.id + "/treasure-analysis";
+    const first = await app.inject({ method: "POST", url, headers,
+      payload: { imageUrl: "https://images.example.test/one.jpg" } });
+    expect(first.statusCode).toBe(202);
+    createdTaskIds.push(first.json().taskId);
+    const second = await app.inject({ method: "POST", url, headers,
+      payload: { imageUrl: "https://images.example.test/two.jpg" } });
+    expect(second.statusCode).toBe(409);
+    expect(second.json()).toEqual({ error: "TREASURE_ANALYSIS_IDEMPOTENCY_CONFLICT" });
+  });
+  it("keeps vision inspection ADMIN-only and unavailable until a worker adapter is configured", async () => {
+    const deal = await createDeal();
+    const unauthenticated = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const viewer = await login(viewerEmail);
+    const forbidden = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      headers: { authorization: `Bearer ${viewer.accessToken}` },
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(forbidden.statusCode).toBe(403);
+
+    const admin = await login(adminEmail);
+    const unavailable = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/vision-inspection`,
+      headers: { authorization: `Bearer ${admin.accessToken}` },
+      payload: { imageUrl: "https://images.example.test/item.jpg" },
+    });
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json()).toEqual({ error: "VISION_INSPECTOR_NOT_CONFIGURED" });
   });
 
   it("serves the deal list to an authenticated viewer with JSON-safe amounts", async () => {
