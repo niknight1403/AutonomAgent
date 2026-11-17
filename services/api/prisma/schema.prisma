@@ -328,3 +328,14 @@ model SecurityAuditEvent {
   @@index([action, createdAt])
   @@index([targetType, targetId, createdAt])
 }
+
+
+/// Shared, atomic authentication throttling buckets for horizontally safe API instances.
+model AuthRateLimitBucket {
+  key             String   @id @db.VarChar(64)
+  windowStartedAt DateTime
+  count           Int      @default(0)
+  updatedAt       DateTime @updatedAt
+
+  @@index([windowStartedAt])
+}
