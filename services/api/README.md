@@ -197,3 +197,14 @@ The cleanup command repeats bounded batches until fewer than 500 stale rows rema
 7. Keep PAPER mode and the emergency stop enabled. Do not enable any live purchasing or order execution without separate provider integrations, explicit human approval, and a successful safety review.
 
 A successful Git push is not proof of deployment. No production secrets, database, Redis instance, admin account, or deployment are provisioned by these repository changes.
+
+
+### Admin provider discovery and deal scanning
+
+- `GET /v1/admin/providers` lists configured server-side providers and their read-only capabilities. Credentials and base URLs are never returned.
+- `POST /v1/admin/deals/scan` runs a bounded read-only product search, computes an estimated EUR margin from the supplied resale-price/cost/risk assumptions, persists candidates, and writes a scan audit event. The endpoint requires a current database-backed ADMIN principal.
+- Provider connection details are loaded only from server environment variables such as `PROVIDER_CATALOG_DEMO_BASE_URL`, `PROVIDER_CATALOG_DEMO_ALLOWED_HOSTS`, and optional `PROVIDER_CATALOG_DEMO_API_TOKEN`. The configured catalog adapter expects the documented generic REST contract; it is not an eBay/Amazon integration.
+- The scan request's resale price, cost profile, open-trade count, daily-loss amount, and risk limits are explicit operator-supplied assumptions. They are not verified marketplace sale prices or live wallet/account state. Results are estimates, never realized profit or purchase instructions.
+- No provider configured means the scan returns `DEAL_PROVIDER_UNAVAILABLE`; the system does not invent products or substitute demo data.
+
+The scan endpoint does not place orders, reserve funds, create marketplace listings, or initiate payments. Deal approval remains a separate ADMIN review step and is not purchase authorization.
