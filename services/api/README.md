@@ -81,3 +81,12 @@ The scanner currently accepts EUR only; it rejects other currencies rather than 
 The same package also exports `scanProviderDeals(provider, request, signal?)`. This composes a provider's declared `PRODUCT_SEARCH` capability with the analysis function: it bounds query/limit, requires EUR until conversion is implemented, propagates abort signals, rejects over-sized provider responses, and analyzes only records actually returned by that provider. An empty provider response stays empty; no sample products are substituted.
 
 This pipeline is currently a reusable core function, not an HTTP endpoint. The API deliberately does not expose it publicly until authenticated sessions, authorization, and persisted audit controls are in place.
+
+
+### Persisted deal review queue
+
+The Prisma schema and SQL migration add `DealCandidate`, uniquely keyed by provider plus external product ID. `persistDealCandidates` upserts batches of up to 100 observations in a serializable transaction. Every new observation resets its review state to `DISCOVERED` and clears prior reviewer metadata so an old review cannot silently carry over to changed prices or risk assumptions.
+
+`listDealCandidates` supports status/risk filters and a bounded result count. `reviewDealCandidate` is an internal primitive that must only be called after authenticated ADMIN authorization; it rejects approval of simulated or risk-failing records and uses a compare-and-set update to prevent concurrent review races. An APPROVED label is only a human review outcome: it does not authorize or execute a purchase. No public HTTP route is wired yet.
+
+Migration `20261117000000_deal_candidates` is committed but has **not** been applied to a database. Run Prisma migration deployment only after reviewing the migration and confirming the target database.
