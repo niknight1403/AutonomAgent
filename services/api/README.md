@@ -90,3 +90,10 @@ The Prisma schema and SQL migration add `DealCandidate`, uniquely keyed by provi
 `listDealCandidates` supports status/risk filters and a bounded result count. `reviewDealCandidate` is an internal primitive that must only be called after authenticated ADMIN authorization; it rejects approval of simulated or risk-failing records and uses a compare-and-set update to prevent concurrent review races. An APPROVED label is only a human review outcome: it does not authorize or execute a purchase. No public HTTP route is wired yet.
 
 Migration `20261117000000_deal_candidates` is committed but has **not** been applied to a database. Run Prisma migration deployment only after reviewing the migration and confirming the target database.
+
+
+### API deal-scan composition
+
+`src/deal-scan-service.ts` now connects the configured provider registry to the shared trading-core scanner and the persistent review queue. `runAndPersistDealScan` resolves only a registered provider with `PRODUCT_SEARCH`, analyzes the provider's actual read-only results, checks cancellation before persistence, and stores the resulting candidates. Its return value contains counts only, not provider credentials or raw payloads.
+
+This is an internal service function, not a public route or an automatically scheduled job. It must be called only by a future authenticated, authorized operator workflow. The API workspace declares the shared trading-core dependency; its TypeScript build emits the shared source under the API build output, so the production start script targets `dist/services/api/src/server.js`. The lockfile was updated with the workspace dependency. No install, typecheck, test, migration, or deployment has been run as part of this source change.
