@@ -60,3 +60,5 @@ export function evaluateRisk(candidate: RiskCandidate, limits: RiskLimits): stri
 }
 
 export * from "./autopilot";
+
+export * from "./deal-scanner";
