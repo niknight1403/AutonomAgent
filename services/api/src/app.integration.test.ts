@@ -98,6 +98,47 @@ suite("authenticated deal review routes (RBAC)", () => {
     expect(await prisma.refreshSession.count({ where: { userId: { in: createdUserIds } } })).toBe(0);
   });
 
+  it("writes login, logout and deal-review audit events visible only to admins", async () => {
+    const deal = await createDeal();
+    const { accessToken, refreshToken } = await login(adminEmail);
+    const reviewed = await app.inject({
+      method: "POST",
+      url: `/v1/deals/${deal.id}/review`,
+      headers: { authorization: `Bearer ${accessToken}` },
+      payload: { decision: "APPROVED" },
+    });
+    expect(reviewed.statusCode).toBe(200);
+
+    const logout = await app.inject({
+      method: "POST",
+      url: "/v1/auth/logout",
+      payload: { refreshToken },
+    });
+    expect(logout.statusCode).toBe(204);
+
+    const audit = await app.inject({
+      method: "GET",
+      url: "/v1/admin/audit?limit=100",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(audit.statusCode).toBe(200);
+    const events = (audit.json() as { events: Array<{ action: string; targetId: string | null }> }).events;
+    expect(events.some((event) => event.action === "AUTH_LOGIN")).toBe(true);
+    expect(events.some((event) => event.action === "AUTH_LOGOUT")).toBe(true);
+    expect(events.some((event) => event.action === "DEAL_REVIEW" && event.targetId === deal.id)).toBe(true);
+  });
+
+  it("does not allow a viewer to read the admin audit stream", async () => {
+    const { accessToken } = await login(viewerEmail);
+    const response = await app.inject({
+      method: "GET",
+      url: "/v1/admin/audit",
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "ADMIN_ROLE_REQUIRED" });
+  });
+
   it("keeps the deal list closed without a bearer token", async () => {
     const response = await app.inject({ method: "GET", url: "/v1/deals" });
     expect(response.statusCode).toBe(401);
