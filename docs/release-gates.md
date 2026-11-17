@@ -20,7 +20,7 @@ Until every relevant gate is evidenced, keep LIVE trading disabled.
 
 The GitHub Actions workflow at `.github/workflows/ci.yml` checks clean lockfile installation, Prisma client generation/schema validation/migrations against PostgreSQL, API build, workspace typechecks, unit and PostgreSQL integration tests, `npm audit --audit-level=high`, and Android Expo bundling. These checks validate repository changes only; they do not satisfy the production gates above or enable live trading.
 
-Local verification passed after a clean `npm ci`: migrations were current, API build and all workspace checks/tests passed, and the Android bundle exported. GitHub Actions CI Run `43990674018` also passed before publication. The public pre-release `v0.1.0` points to commit `f8176e3603cce88ee40bd20379e249dd69869bca`. The high/critical audit threshold passes; the current dependency tree still reports 11 moderate advisories in the Expo toolchain. Moderate findings are not a formal risk exception and must be triaged again before any production release.
+Local verification passed after a clean `npm ci`: migrations were current, API build and all workspace checks/tests passed, and the Android bundle exported. GitHub Actions CI Run `43990674018` also passed before publication. The public pre-release `v0.1.0` remains the historical baseline; the `v0.2.0` release notes document the new testnet safety primitives and verification evidence. Both are source-code releases, not production approvals. The high/critical audit threshold passes; the current dependency tree still reports 11 moderate advisories in the Expo toolchain. Moderate findings are not a formal risk exception and must be triaged again before any production release.
 
 ## Android EAS build profiles
 
