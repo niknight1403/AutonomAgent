@@ -76,3 +76,8 @@ This is a generic integration contract and test fixture, not a connection to eBa
 `@autonomagent/trading-core` exports `analyzeDeals` from `src/deal-scanner.ts`. It accepts normalized provider products plus an explicit cost profile (shipping, marketplace/payment fees, packaging, risk reserve) and a resale-price assumption. It calculates expected net profit and ROI with integer-cent/BigInt arithmetic, then applies the existing risk limits.
 
 The scanner currently accepts EUR only; it rejects other currencies rather than silently converting them. It also rejects duplicate provider identities and invalid minor-unit prices. `approvedByRiskRules` means only that the supplied numeric candidate passed the configured rules; it is not purchase authorization, a guarantee of sale, realized profit, or a signal to execute a trade. The scanner does not reserve funds or create orders.
+
+
+The same package also exports `scanProviderDeals(provider, request, signal?)`. This composes a provider's declared `PRODUCT_SEARCH` capability with the analysis function: it bounds query/limit, requires EUR until conversion is implemented, propagates abort signals, rejects over-sized provider responses, and analyzes only records actually returned by that provider. An empty provider response stays empty; no sample products are substituted.
+
+This pipeline is currently a reusable core function, not an HTTP endpoint. The API deliberately does not expose it publicly until authenticated sessions, authorization, and persisted audit controls are in place.
