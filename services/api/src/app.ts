@@ -42,6 +42,7 @@ const STATUS_BY_ERROR: Readonly<Record<string, number>> = Object.freeze({
   DEAL_REVIEW_FIELDS_REQUIRED: 400,
   DEAL_LIST_LIMIT_INVALID: 400,
   AUDIT_LIST_LIMIT_INVALID: 400,
+  AUDIT_CURSOR_INVALID: 400,
 });
 
 /** BigInt cents and Date values are normalised so the payload stays JSON-safe. */
