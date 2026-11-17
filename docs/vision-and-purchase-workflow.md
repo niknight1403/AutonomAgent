@@ -46,6 +46,18 @@ The downloader requires HTTPS, an exact allowlisted hostname, public DNS answers
 
 The worker package now contains a parallel HiddenTreasureSwarm orchestrator, evidence-backed scoring, typed specialist findings, and OpenAI-compatible adapters for visual, collector, technical, restoration, and risk analysis. The orchestrator enforces bounded concurrency/timeouts, reports missing or failed specialists, compares explicit model identifiers, and only values products when the market adapter supplies at least two recent HTTPS-sourced sold comparables in the candidate currency. Without a real market provider, market research is SKIPPED and valuation remains RESEARCH_REQUIRED. These Python components are implemented and covered by tests, but are not yet started by the API, persisted as AgentTask records, connected to an actual marketplace sold-data provider, or exposed in the mobile UI. Deployment wiring and durable task execution remain required before the full autonomous workflow is operational.
 
+## Running the analysis pipeline (private deployment)
+
+The API and Python worker are separate processes. Apply the existing Prisma migrations, start the API, and start the worker command from the repository root:
+
+- API: `npm run dev --workspace @autonomagent/api`
+- Task dispatcher: `npm run worker --workspace @autonomagent/api`
+- Python specialist service: from `services/vision-worker`, install with `pip install -e ".[test]"` and run `python -m vision_worker.main`.
+
+Configure the API task dispatcher with `VISION_WORKER_URL` pointing to the private worker service and `VISION_WORKER_TOKEN` with a random secret of at least 32 characters. Configure the Python service with the same `VISION_WORKER_TOKEN`, `VISION_ALLOWED_IMAGE_HOSTS` as a comma-separated list of exact approved image hostnames, and the LLM variables `LLM_API_KEY`, `LLM_BASE_URL`, and `VISION_MODEL`. Keep the Python service on a private network; do not expose port 8091 publicly. The API worker polls durable AgentTask rows, claims them with a lease, retries transient failures up to maxAttempts, and persists the result/status. The OutboxEvent is written atomically with the task for downstream audit/dispatch.
+
+The queue is functional for visual and LLM specialist analysis once both processes and credentials are deployed. Market research remains explicitly unavailable until an approved sold-listing provider is configured; results therefore remain RESEARCH_REQUIRED and cannot claim a verified resale value. The API does not mark a task complete merely because it was queued.
+
 ## Purchase workflow (design boundary; not an active integration)
 
 The existing API supports authenticated deal review, not marketplace purchases. Do not add a generic Playwright login-and-send implementation or claim that a purchase succeeded when a background task was merely queued.
