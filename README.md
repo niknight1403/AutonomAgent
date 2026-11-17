@@ -19,6 +19,11 @@ This repository is an initial, safe foundation. It is **not** a production tradi
 - `packages/trading-core` — pure risk/profit calculation primitives
 - `docs` — architecture and release gates
 
+The trading core also contains three PAPER-only strategy research primitives:
+explainable feature-based signals, risk-bounded portfolio allocation, and
+deterministic walk-forward backtesting. They never place orders or call a
+broker. See [docs/advanced-strategies.md](docs/advanced-strategies.md).
+
 ## Getting started
 
 Requirements: Node.js 20+ and npm.

@@ -62,3 +62,9 @@ export function evaluateRisk(candidate: RiskCandidate, limits: RiskLimits): stri
 export * from "./autopilot.js";
 
 export * from "./deal-scanner.js";
+
+export * from "./strategy-signals.js";
+
+export * from "./strategy-allocation.js";
+
+export * from "./strategy-backtest.js";

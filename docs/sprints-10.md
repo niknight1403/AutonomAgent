@@ -1,4 +1,4 @@
-# Zehn Ergebnis-Sprints: AutonomAgent
+# Dreizehn Ergebnis-Sprints: AutonomAgent
 
 **Grundlage:** öffentliches Repository `niknight1403/AutonomAgent`; beim Start gab es kein Sprint-Board und keine offenen GitHub-Issues. Die Abfolge bündelt die vorhandenen Refactoring-Befunde und den genehmigten sicheren Produktpilot. „Sprint“ bezeichnet hier ein prüfbares Ergebnis, nicht eine Kalenderwoche.
 
@@ -14,6 +14,9 @@
 | 8 | npm-Lockfile, kompatible Sicherheitsupdates und Audit-Restbefund dokumentieren | Erledigt |
 | 9 | Lokale DE/EU-Produktdemo mit Katalog, Bewertung, kanalbezogenen Drafts und Reichweitenideen | Erledigt |
 | 10 | Abschlussprüfung, Release-Gates, Commit/Push und GitHub-Release | Erledigt – CI Run `43990674018` grün; öffentlicher Pre-release `v0.1.0` veröffentlicht |
+| 11 | Erklärbare KI-Strategie-Signale mit begrenzten Features und PAPER-only-Ausgabe | Erledigt – deterministische Signale, Faktoren und Grenzwerttests |
+| 12 | Risiko- und kapitalbegrenzte Portfolioallokation für priorisierte Signale | Erledigt – Positions-, Kapital- und Portfoliorisikogrenzen getestet |
+| 13 | Reproduzierbares PAPER-Backtesting mit Drawdown- und Trefferkennzahlen | Erledigt – Reihenfolge, Duplikate und Sicherheitsgrenzen getestet |
 
 Die Sprints 2–6 ändern Kernverhalten mit Datenbankeffekten. Sie gelten erst als abgeschlossen, wenn Regressionstests bestanden sind; wo PostgreSQL erforderlich ist, zählt ein Mock nicht als Ersatz. Die Produktions-Release-Gates bleiben von einem GitHub-Quellcode-Release getrennt; ein Code-Release erklärt die Anwendung nicht für produktionsreif.
 
