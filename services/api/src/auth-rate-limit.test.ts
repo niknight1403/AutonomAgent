@@ -1,7 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { InMemoryAuthRateLimiter, RedisRestAuthRateLimiter } from "./auth-rate-limit.js";
-
-afterEach(() => vi.unstubAllGlobals());
+import { describe, expect, it, vi } from "vitest";
+import type { PrismaClient } from "@prisma/client";
+import { InMemoryAuthRateLimiter, PostgresAuthRateLimiter } from "./auth-rate-limit.js";
 
 describe("authentication rate limiter", () => {
   it("enforces a fixed window and resets after expiry in memory", async () => {
@@ -12,30 +11,22 @@ describe("authentication rate limiter", () => {
     await expect(limiter.consume("client", 61_001)).resolves.toMatchObject({ allowed: true });
   });
 
-  it("uses a Redis atomic script and hashes the client key", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: [6, 42_000] }),
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    const limiter = new RedisRestAuthRateLimiter("https://redis.example.test", "secret");
-    await expect(limiter.consume("192.0.2.1:/v1/auth/login", 123))
-      .resolves.toEqual({ allowed: false, retryAfterSeconds: 42 });
-    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("https://redis.example.test");
-    expect(String(options.body)).toContain("EVAL");
-    expect(String(options.body)).not.toContain("192.0.2.1");
-    expect(options.headers).toMatchObject({ authorization: "Bearer secret" });
+  it("uses one atomic SQL upsert and persists only a hash of the client key", async () => {
+    const query = vi.fn().mockResolvedValue([{ count: 6, windowStartedAt: new Date(10_000) }]);
+    const prisma = { $queryRaw: query } as unknown as PrismaClient;
+    const limiter = new PostgresAuthRateLimiter(prisma, 60_000, 5);
+    await expect(limiter.consume("192.0.2.1:/v1/auth/login", 20_000))
+      .resolves.toEqual({ allowed: false, retryAfterSeconds: 50 });
+    expect(query).toHaveBeenCalledTimes(1);
+    const sql = query.mock.calls[0]?.[0] as { sql?: string; values?: unknown[] };
+    expect(sql.sql?.join(" ")).toContain("ON CONFLICT");
+    expect(sql.sql?.join(" ")).toContain("RETURNING");
+    expect(JSON.stringify(sql.values)).not.toContain("192.0.2.1");
   });
 
-  it("fails closed when Redis is unavailable", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
-    const limiter = new RedisRestAuthRateLimiter("https://redis.example.test", "secret");
-    await expect(limiter.consume("client", 0)).rejects.toThrow("AUTH_RATE_LIMIT_REDIS_UNAVAILABLE");
-  });
-
-  it("rejects insecure Redis REST endpoints", () => {
-    expect(() => new RedisRestAuthRateLimiter("http://redis.example.test", "secret"))
-      .toThrow("AUTH_RATE_LIMIT_REDIS_URL_MUST_USE_HTTPS");
+  it("fails closed when the database query fails", async () => {
+    const prisma = { $queryRaw: vi.fn().mockRejectedValue(new Error("offline")) } as unknown as PrismaClient;
+    const limiter = new PostgresAuthRateLimiter(prisma);
+    await expect(limiter.consume("client", 0)).rejects.toThrow("offline");
   });
 });
