@@ -6,7 +6,7 @@ This runbook is the gate between a successful repository build and an actual pro
 
 - PostgreSQL 16+ with automated backups and a tested restore procedure.
 - PostgreSQL database for application data and shared authentication rate limits.
-- Secret manager entries for `DATABASE_URL`, `AUTH_SIGNING_SECRET`,  .
+- Secret manager entries for `DATABASE_URL` and `AUTH_SIGNING_SECRET`; configure `BRAVE_SEARCH_API_KEY` only if the read-only Brave search route is enabled.
 - A server-side catalog provider implementing the documented read-only contract. No provider credentials belong in the Android app.
 - A trusted operator shell for one-time ADMIN bootstrap and a scheduler for refresh-session cleanup.
 
@@ -19,7 +19,7 @@ This runbook is the gate between a successful repository build and an actual pro
 5. Generate a high-entropy signing secret (at least 32 random bytes) and configure all required secrets only in the deployment secret manager.
 6. Run the one-time ADMIN bootstrap command from a trusted shell.
 7. Run the session cleanup command from a daily scheduler and alert on non-zero exit status.
-8. Verify in staging: login, refresh-token reuse rejection, logout, viewer/ADMIN authorization, audit trail, Redis rate limits, provider discovery, empty-provider scan failure, and successful scan against a real provider contract.
+8. Verify in staging: login, refresh-token reuse rejection, logout, viewer/ADMIN authorization, audit trail, shared PostgreSQL rate limits, provider discovery, empty-provider scan failure, and successful scan against a real provider contract.
 9. Verify backups and restore, TLS, log redaction, monitoring, alerting, and rollback.
 10. Only then consider the application ready for controlled PAPER operation.
 

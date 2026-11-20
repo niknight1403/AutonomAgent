@@ -2,13 +2,15 @@
   "expo": {
     "name": "AutonomAgent",
     "slug": "autonomagent",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store"
+    ],
     "android": {
       "package": "com.autonomagent.trader",
-      "versionCode": 3
+      "versionCode": 4
     },
     "extra": {
       "tradingMode": "PAPER",
