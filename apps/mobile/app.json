@@ -5,6 +5,7 @@
     "version": "0.3.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "plugins": ["expo-secure-store"],
     "android": {
       "package": "com.autonomagent.trader",
       "versionCode": 3

@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "prisma:generate": "prisma generate --schema prisma/schema.prisma",
+    "pretest": "npm run prisma:generate && npm run build --workspace @autonomagent/trading-core",
     "build": "npm run build --workspace @autonomagent/trading-core && tsc -p tsconfig.build.json",
+    "prebuild": "npm run prisma:generate",
     "start": "node dist/services/api/src/server.js",
     "typecheck": "tsc --noEmit",
+    "pretypecheck": "npm run prisma:generate && npm run build --workspace @autonomagent/trading-core",
     "test": "vitest run src",
     "admin:create": "tsx scripts/create-admin.ts",
     "sessions:cleanup": "tsx scripts/cleanup-sessions.ts"

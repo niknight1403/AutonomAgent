@@ -7,12 +7,15 @@ export interface ProviderHttpClientOptions {
   maxResponseBytes?: number;
   /** Server-side secret only. Never pass a mobile/client-provided token. */
   bearerToken?: string;
+  /** Server-side key for APIs using the Brave-style subscription header. */
+  subscriptionToken?: string;
 }
 
 export class ProviderHttpError extends Error {
   constructor(
     message: string,
     readonly status?: number,
+    readonly retryAfterMs?: number,
   ) {
     super(message);
     this.name = "ProviderHttpError";
@@ -97,6 +100,9 @@ export class ProviderHttpClient {
       if (this.options.bearerToken) {
         headers.authorization = `Bearer ${this.options.bearerToken}`;
       }
+      if (this.options.subscriptionToken) {
+        headers["x-subscription-token"] = this.options.subscriptionToken;
+      }
       const response = await fetch(url, {
         method: "GET",
         headers,
@@ -104,9 +110,17 @@ export class ProviderHttpClient {
         redirect: "error",
       });
       if (!response.ok) {
+        const retryAfterHeader = response.headers.get("retry-after");
+        const resetHeader = response.headers.get("x-ratelimit-reset");
+        const retryAfterSeconds = retryAfterHeader
+          ? Number(retryAfterHeader)
+          : Number(resetHeader?.split(",")[0]?.trim());
         throw new ProviderHttpError(
           `Provider returned HTTP ${response.status}`,
           response.status,
+          response.status === 429 && Number.isFinite(retryAfterSeconds) && retryAfterSeconds >= 0
+            ? Math.max(1_000, Math.min(retryAfterSeconds * 1_000, 30_000))
+            : undefined,
         );
       }
       const contentType = response.headers.get("content-type") ?? "";

@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import helmet from "@fastify/helmet";
 import cors from "@fastify/cors";
-import type { DealCandidate, PrismaClient } from "@prisma/client";
+import { Prisma, type DealCandidate, type PrismaClient } from "@prisma/client";
 import { config } from "./config.js";
 import { authenticateBearerToken, requireAdmin, type AuthenticatedPrincipal } from "./auth-service.js";
 import { loginWithPassword, revokeRefreshToken, rotateRefreshToken } from "./auth-session-service.js";
@@ -11,6 +11,8 @@ import { InMemoryAuthRateLimiter, PostgresAuthRateLimiter } from "./auth-rate-li
 import { runAndPersistDealScan } from "./deal-scan-service.js";
 import { createConfiguredProviderRegistry } from "./providers/bootstrap.js";
 import type { ProviderRegistry } from "./providers/registry.js";
+import { BraveSearchClient, type WebSearchPage } from "./providers/brave-search.js";
+import { ProviderHttpError } from "./providers/http-client.js";
 
 
 export interface ServerDependencies {
@@ -19,6 +21,7 @@ export interface ServerDependencies {
   authSigningSecret?: string | undefined;
   now?: () => Date;
   providers?: ProviderRegistry;
+  webSearch?: Pick<BraveSearchClient, "search">;
 }
 
 type ReviewDecision = "APPROVED" | "REJECTED" | "ARCHIVED";
@@ -82,7 +85,11 @@ function errorCode(error: unknown): string {
 export async function buildServer(dependencies: ServerDependencies): Promise<FastifyInstance> {
   const { prisma } = dependencies;
   const providers = dependencies.providers ?? createConfiguredProviderRegistry();
+  const webSearch = dependencies.webSearch ?? (process.env.BRAVE_SEARCH_API_KEY?.trim()
+    ? new BraveSearchClient(process.env.BRAVE_SEARCH_API_KEY.trim())
+    : undefined);
   const now = dependencies.now ?? (() => new Date());
+  const startedAtMs = Date.now();
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
     requestIdHeader: "x-request-id",
@@ -136,7 +143,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     );
   }
 
-  app.get("/health", async () => ({
+  const healthResponse = () => ({
     status: "ok",
     service: "autonomagent-api",
     tradingMode: config.tradingMode,
@@ -145,7 +152,86 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
     emergencyStop: config.emergencyStop,
     tradingReady: false,
     note: "Health only. Trading endpoints are not implemented.",
-  }));
+  });
+
+  // Liveness endpoint: does not require database or provider availability.
+  app.get("/health", async () => healthResponse());
+  app.get("/api/health", async () => healthResponse());
+
+  app.get("/api/status", async (_request, reply) => {
+    const requestStartedAt = Date.now();
+    let database: { state: "CONNECTED" | "DISCONNECTED"; latencyMs: number };
+    const databaseStartedAt = Date.now();
+    try {
+      await prisma.$queryRaw(Prisma.sql`SELECT 1`);
+      database = { state: "CONNECTED", latencyMs: Date.now() - databaseStartedAt };
+    } catch {
+      database = { state: "DISCONNECTED", latencyMs: Date.now() - databaseStartedAt };
+    }
+
+    const integrations = {
+      braveSearch: Boolean(process.env.BRAVE_SEARCH_API_KEY?.trim()),
+      stripe: Boolean(process.env.STRIPE_SECRET_KEY?.trim()),
+      digistore24: Boolean(process.env.DIGISTORE24_API_KEY?.trim()),
+      hubspot: Boolean(process.env.HUBSPOT_ACCESS_TOKEN?.trim()),
+    };
+    const configuredProviders = providers.list().map((provider) => provider.providerId);
+    const response = {
+      state: database.state === "CONNECTED" ? "HEALTHY" : "DEGRADED",
+      service: "autonomagent-api",
+      uptimeSeconds: Math.floor((Date.now() - startedAtMs) / 1000),
+      latencyMs: Date.now() - requestStartedAt,
+      database,
+      workers: { active: 0, state: "NOT_RUNNING" as const },
+      integrations,
+      configuredProviders,
+      tradingMode: config.tradingMode,
+      liveTradingEnabled: config.liveTradingEnabled,
+      emergencyStop: config.emergencyStop,
+    };
+    return reply.code(200).send(response);
+  });
+
+  app.post("/v1/admin/web-search", async (request, reply) => {
+    try {
+      const principal = await principalFrom(request);
+      requireAdmin(principal);
+      if (!webSearch) return reply.code(503).send({ error: "BRAVE_SEARCH_NOT_CONFIGURED" });
+      const body = request.body as Record<string, unknown> | undefined;
+      const allowedFields = new Set(["query", "count", "offset"]);
+      if (!body || Object.keys(body).some((key) => !allowedFields.has(key))) {
+        return reply.code(400).send({ error: "WEB_SEARCH_INPUT_INVALID" });
+      }
+      if (typeof body.query !== "string" || !body.query.trim() || body.query.length > 600 ||
+          (body.count !== undefined && (typeof body.count !== "number" || !Number.isInteger(body.count) || body.count < 1 || body.count > 20)) ||
+          (body.offset !== undefined && (typeof body.offset !== "number" || !Number.isInteger(body.offset) || body.offset < 0 || body.offset > 9))) {
+        return reply.code(400).send({ error: "WEB_SEARCH_INPUT_INVALID" });
+      }
+      const result: WebSearchPage = await webSearch.search({
+        query: body.query,
+        ...(body.count === undefined ? {} : { count: body.count as number }),
+        ...(body.offset === undefined ? {} : { offset: body.offset as number }),
+      });
+      await writeAuditEvent(prisma, {
+        actorUserId: principal.userId,
+        action: "WEB_SEARCH",
+        outcome: "SUCCESS",
+        requestId: request.id,
+        metadata: { providerId: "brave-search", resultCount: result.results.length },
+      });
+      return reply.code(200).send(result);
+    } catch (error) {
+      if (error instanceof ProviderHttpError) {
+        if (error.status === 429) return reply.code(429).send({ error: "WEB_SEARCH_RATE_LIMITED" });
+        return reply.code(502).send({ error: "WEB_SEARCH_PROVIDER_UNAVAILABLE" });
+      }
+      const code = errorCode(error);
+      if (code === "WEB_SEARCH_QUERY_INVALID" || code === "WEB_SEARCH_COUNT_INVALID" || code === "WEB_SEARCH_OFFSET_INVALID") {
+        return reply.code(400).send({ error: code });
+      }
+      return fail(reply, error);
+    }
+  });
 
   app.post("/v1/auth/login", async (request, reply) => {
     reply.header("Cache-Control", "no-store").header("Pragma", "no-cache");

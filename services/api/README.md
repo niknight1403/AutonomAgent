@@ -36,9 +36,13 @@ Required before live trading:
 The mobile app must display a disconnected state until authenticated health and operations endpoints are available. Never infer a successful purchase from a request timeout.
 
 
-## Local product demo boundary
+## Mobile product-research boundary
 
-The mobile product-discovery demo uses `packages/trading-core` local fixture data only. Its deterministic demo pipeline assesses illustrative prices, creates unposted listing drafts, and returns channel-fit recommendations with clearly illustrative reach ranges. It has no marketplace or advertising API client, does not persist catalog data, and cannot purchase, publish, approve, or enable live trading. It does not start the separate API outbox worker or agent orchestrator described above; the current API server starts only its health/operations routes. The API configuration hard-rejects `TRADING_MODE=LIVE` and `LIVE_TRADING_ENABLED=true`. Do not treat sample margins or reach spans as current prices, market demand, or measured performance.
+The mobile screen now reads `/api/status` from the configured `EXPO_PUBLIC_API_URL` (with a development-only emulator/localhost fallback), and polls status every 30 seconds. Login and rotating refresh use the API's `/v1/auth/*` routes; only the refresh token is persisted with Expo SecureStore, while the short-lived access token remains in memory. There is no public self-registration: provision an ADMIN through the documented controlled bootstrap before using mobile web search. The screen calls the ADMIN-protected `POST /v1/admin/web-search` endpoint only after login.
+
+The mobile product list, sample margins, unposted listing drafts, and illustrative reach-range scenarios have been removed; the corresponding local `autopilot` fixture module and tests are no longer exported or present. Web-search results are genuine Brave search-engine source leads, not verified product prices, stock, shipping, fees, or offers. They are not persisted and do not start a worker. No purchase, payment, listing publication, autonomous execution, or live trading path is enabled; `TRADING_MODE=LIVE` and `LIVE_TRADING_ENABLED=true` remain rejected by API configuration.
+
+Set `EXPO_PUBLIC_API_URL` in `apps/mobile/.env` to a reachable API base URL for the device (for example, the host machine's LAN address for a physical Android device during local development). Use HTTPS for deployed environments; plain HTTP is only for trusted local development. Do not place API keys, signing secrets, or other server credentials in any `EXPO_PUBLIC_*` variable. A development fallback is not a production endpoint.
 
 ## Provider adapter boundary
 
@@ -135,15 +139,20 @@ The Fastify login, refresh and logout routes use these primitives. Refresh token
 | Route | Authorization | Behavior |
 | --- | --- | --- |
 | `GET /health` | public | Service and safety flags, `tradingReady: false` |
+| `GET /api/health` | public | Liveness alias for mobile clients; does not imply database or trading readiness |
+| `GET /api/status` | public | Database connectivity/latency, integration-key presence, worker state and uptime; never returns secret values |
 | `POST /v1/auth/login` | public | Issues an HS256 access token (15 min) plus a rotating refresh token (30 days) |
 | `POST /v1/auth/refresh` | refresh token | One-time rotation; reuse of a rotated token returns 401 |
 | `POST /v1/auth/logout` | refresh token | Revokes the presented refresh session, 204 |
 | `GET /v1/deals` | any authenticated role | Review queue with `reviewStatus`, `riskPassed` and `limit` (1..100) filters |
 | `POST /v1/deals/:dealId/review` | ADMIN only | `APPROVED`, `REJECTED` or `ARCHIVED`; 422 for simulated or risk-failing approval, 409 on a concurrent or repeated decision |
+| `POST /v1/admin/web-search` | ADMIN only | Calls Brave Web Search on explicit request and returns deduplicated HTTPS source leads; results contain no verified price, stock, fee, or purchase capability |
 
 Access control is enforced per request: `authenticateBearerToken` verifies the signature and then reloads the user's role and `disabledAt` from PostgreSQL, so a role change or a disabled account takes effect without waiting for the token to expire. Cent amounts are serialized as strings to keep them JSON-safe.
 
-The routes expose review decisions only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login, refresh and logout use a PostgreSQL-backed atomic fixed-window limiter (5 requests per minute per IP and endpoint), shared across API instances; database unavailability fails auth requests closed. The API applies a 16 KiB request-body limit and does not trust proxy headers. Password reset, self-registration, cookie sessions, CSRF tokens and signing-key rotation are not implemented.
+The trading routes expose review decisions only; the separate Brave route is read-only. There is still no purchase, reservation, listing-publication or payout endpoint, and approving a candidate never reserves funds or contacts a provider. `AUTH_SIGNING_SECRET` (at least 32 bytes) must come from the deployment environment; without it the auth routes fail closed with 503. Login, refresh and logout use a PostgreSQL-backed atomic fixed-window limiter (5 requests per minute per IP and endpoint), shared across API instances; database unavailability fails auth requests closed. The API applies a 16 KiB request-body limit and does not trust proxy headers. Password reset, self-registration, cookie sessions, CSRF tokens and signing-key rotation are not implemented.
+
+Brave Web Search is an optional, server-side, read-only source lead integration configured with `BRAVE_SEARCH_API_KEY`. Its key is sent only in `X-Subscription-Token`, and the protected endpoint constrains query and pagination inputs. The adapter bounds response size and request time, rejects redirects, normalizes and deduplicates HTTPS URLs, serializes outbound requests, and backs off on HTTP 429. A result's title/snippet is only a search-engine excerpt; it does not establish current product price, availability, shipping cost, or marketplace checkout access. Search results are not persisted yet, and no Brave key is configured by default. See `docs/brave-search-integration-notes.md` for the verified provider contract.
 
 
 ### Refresh-session maintenance
