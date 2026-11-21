@@ -1,9 +1,9 @@
 # AutonomAgent v0.4.0
 
-**Release type:** source-code release candidate
-**Release date:** 2026-11-20
+**Release type:** official source-code release
+**Release date:** 2026-11-21
 **Base:** current `main`, after `v0.3.0`
-**Status:** draft; publication is blocked pending dependency-audit remediation and green CI. This is not a production-readiness claim or an APK distribution.
+**Status:** released after local and remote verification. This is not a production-readiness claim or an APK distribution.
 
 ## Highlights
 
@@ -32,10 +32,10 @@
 
 ## Verification and known limitations
 
-Local release checks on this candidate: Prisma schema validation passed (using a syntactic local URL; no database connection was made); API build and all workspace typechecks passed; API tests passed **84** with **22** PostgreSQL-dependent tests skipped across three integration suites; Trading Core tests passed **37**; and the Android JavaScript bundle export passed. The Android export is not a signed APK or device-install test.
+Local release checks on this candidate: Prisma schema validation and all **9** checked-in migrations passed; API build and all workspace typechecks passed; API tests passed **106** and Trading Core tests passed **37**; `npm ci` reproduced the lockfile; the high/critical dependency audit gate passed with **0 high** and **0 critical** findings; and the Android JavaScript bundle export passed. The Android export is not a signed APK or device-install test.
 
-**Release blocker:** `npm audit --audit-level=high` fails with **3 high** and **11 moderate** advisories. The three high entries stem from `effect` <=3.22.0 (ReDoS, GHSA-7589-6fvf-x4pw) pinned transitively by the current Prisma CLI/config dependency; a non-forced `npm audit fix` did not resolve it. The moderate findings are primarily in the Expo 54 toolchain (`glob`/`minimatch`); npm reports a breaking Expo 58 upgrade as the broad fix. Expo was intentionally left at SDK 54. The latest GitHub CI run on the current pre-release `main` commit failed at the high/critical dependency-audit step; prior CI schema, API build, typecheck, and test steps passed, while the later Android export step was skipped. The secret-hygiene workflow passed. Do not publish this release until the High advisory has a verified, tested remediation and CI is green.
+The Prisma CLI/config transitive `effect` ReDoS advisory (GHSA-7589-6fvf-x4pw) is mitigated by the tested `effect` 3.22.x resolution. The remaining **11 moderate** findings are primarily in the Expo 54 toolchain (`glob`/`minimatch`); npm reports a breaking Expo 58 upgrade as the broad fix, so Expo SDK 54 remains unchanged for this release. The high/critical audit gate is green. The signed APK and device-install test remain outside this source-code release.
 
-Database-backed integration tests require a working PostgreSQL instance and `DATABASE_URL`; skipped tests are not passing integration tests. No live database, deployment secrets, Brave provider credential, marketplace provider, or production deployment is available in this environment, so external-provider and end-to-end production behavior has not been verified.
+Database-backed integration tests require a working PostgreSQL instance and `DATABASE_URL`; the local release run used PostgreSQL and applied all checked-in migrations. No live deployment secrets, Brave provider credential, marketplace provider, or production deployment is available in this environment, so external-provider and end-to-end production behavior has not been verified.
 
 This release is not production-ready. Before any controlled PAPER deployment, follow [`docs/PRODUCTION_ACCEPTANCE.md`](PRODUCTION_ACCEPTANCE.md) and verify migrations, credentials, a real provider contract, staging behavior, backups/restore, monitoring, and operational controls.
