@@ -126,4 +126,25 @@ describe("BraveSearchClient", () => {
     await rejection;
     expect(fetchMock).toHaveBeenCalledOnce();
   });
+
+  it("aborts a queued search promptly without letting the next search overtake the active one", async () => {
+    let finishFirst!: (response: Response) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValue(braveResponse({ web: { results: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BraveSearchClient("server-only-test-key", 0);
+    const first = client.search({ query: "first" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const abort = new AbortController();
+    const second = client.search({ query: "second" }, abort.signal);
+    const rejected = expect(second).rejects.toThrow(/aborted/);
+    const third = client.search({ query: "third" });
+    abort.abort();
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledOnce();
+    finishFirst(braveResponse({ web: { results: [] } }));
+    await Promise.all([first, third]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 });
