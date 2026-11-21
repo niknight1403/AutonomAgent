@@ -41,10 +41,13 @@ function canonicalHttpsUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return null;
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return null;
+    if (url.hostname === "localhost" || url.hostname.endsWith(".localhost") ||
+        url.hostname.endsWith(".local") || /^\d+\.\d+\.\d+\.\d+$/.test(url.hostname) ||
+        url.hostname.includes(":")) return null;
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
-      if (/^(utm_.+|fbclid|gclid|mc_cid|mc_eid|ref)$/i.test(key)) url.searchParams.delete(key);
+      if (/^(utm_.+|fbclid|gclid|msclkid|igshid|mc_cid|mc_eid|ref)$/i.test(key)) url.searchParams.delete(key);
     }
     url.searchParams.sort();
     if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/+$/, "");
@@ -83,10 +86,10 @@ export class BraveSearchClient {
   }
 
   async search(request: WebSearchRequest, signal?: AbortSignal): Promise<WebSearchPage> {
-    const query = request.query.trim();
+    const query = request.query.trim().replace(/\s+/g, " ");
     const count = request.count ?? 10;
     const offset = request.offset ?? 0;
-    if (!query || query.length > 600 || query.split(/\s+/).length > 75) {
+    if (!query || query.length > 600 || query.split(" ").length > 75) {
       throw new Error("WEB_SEARCH_QUERY_INVALID");
     }
     if (!Number.isInteger(count) || count < 1 || count > 20) {
@@ -111,14 +114,16 @@ export class BraveSearchClient {
         } catch (error) {
           if (!(error instanceof ProviderHttpError) || error.status !== 429 || attempt >= 2) throw error;
           const delayMs = error.retryAfterMs ?? (1_000 * (attempt + 1));
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await this.wait(delayMs, signal);
         }
       }
-    });
+    }, signal);
 
-    const rawResults = isRecord(response.web) && Array.isArray(response.web.results)
-      ? response.web.results
-      : [];
+    if (!isRecord(response) || (response.web !== undefined &&
+        (!isRecord(response.web) || !Array.isArray(response.web.results)))) {
+      throw new ProviderHttpError("Provider returned invalid search results");
+    }
+    const rawResults = isRecord(response.web) ? response.web.results as unknown[] : [];
     const seen = new Set<string>();
     const results: WebSearchLead[] = [];
     const retrievedAt = new Date().toISOString();
@@ -149,14 +154,31 @@ export class BraveSearchClient {
     };
   }
 
-  private async withRateLimit<T>(operation: () => Promise<T>): Promise<T> {
+  private async wait(delayMs: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) throw new ProviderHttpError("Provider request was aborted or timed out");
+    if (delayMs <= 0) return;
+    await new Promise<void>((resolve, reject) => {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(new ProviderHttpError("Provider request was aborted or timed out"));
+      };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener("abort", onAbort);
+        resolve();
+      }, delayMs);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  private async withRateLimit<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const previous = this.queue;
     let release!: () => void;
     this.queue = new Promise<void>((resolve) => { release = resolve; });
     await previous;
     try {
       const waitMs = Math.max(0, this.nextRequestAt - Date.now());
-      if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      await this.wait(waitMs, signal);
+      if (signal?.aborted) throw new ProviderHttpError("Provider request was aborted or timed out");
       this.nextRequestAt = Date.now() + this.minimumIntervalMs;
       return await operation();
     } finally {
