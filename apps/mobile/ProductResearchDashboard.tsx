@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
@@ -90,6 +90,8 @@ export default function ProductResearchDashboard() {
   const [hasMoreResults, setHasMoreResults] = useState(false);
   const [pageOffset, setPageOffset] = useState(0);
   const [activeQuery, setActiveQuery] = useState("");
+  const searchRequestId = useRef(0);
+  const sessionEpoch = useRef(0);
 
   const refreshApiStatus = useCallback(async () => {
     setRefreshingStatus(true);
@@ -112,12 +114,14 @@ export default function ProductResearchDashboard() {
   }, []);
 
   const renewSession = useCallback(async (token: string): Promise<SessionTokens | null> => {
+    const epoch = sessionEpoch.current;
     try {
       const response = await requestJson("/v1/auth/refresh", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ refreshToken: token }),
       });
+      if (epoch !== sessionEpoch.current) return null;
       if (!response.ok) {
         if (response.status === 401) {
           await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
@@ -130,12 +134,18 @@ export default function ProductResearchDashboard() {
       const tokens = await response.json() as SessionTokens;
       if (!tokens.accessToken || !tokens.refreshToken) throw new Error("invalid token response");
       await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, tokens.refreshToken);
+      if (epoch !== sessionEpoch.current) {
+        await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+        return null;
+      }
       setRefreshToken(tokens.refreshToken);
       setAccessToken(tokens.accessToken);
       setAuthMessage(null);
       return tokens;
     } catch {
-      setAuthMessage("Gespeicherte Sitzung konnte nicht erneuert werden. Prüfe die Backend-Verbindung.");
+      if (epoch === sessionEpoch.current) {
+        setAuthMessage("Gespeicherte Sitzung konnte nicht erneuert werden. Prüfe die Backend-Verbindung.");
+      }
       return null;
     }
   }, []);
@@ -196,7 +206,23 @@ export default function ProductResearchDashboard() {
 
   const logout = async () => {
     const token = refreshToken;
+    searchRequestId.current += 1;
+    sessionEpoch.current += 1;
     setAuthBusy(true);
+    setAccessToken(null);
+    setRefreshToken(null);
+    setSearchResults([]);
+    setHasMoreResults(false);
+    setActiveQuery("");
+    setSearchBusy(false);
+    setSearchMessage(null);
+    let localTokenCleared = false;
+    try {
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
+      localTokenCleared = true;
+    } catch {
+      setAuthMessage("Sitzung abgemeldet, aber der sichere Gerätespeicher konnte nicht bereinigt werden.");
+    }
     try {
       if (token) {
         const response = await requestJson("/v1/auth/logout", {
@@ -204,17 +230,11 @@ export default function ProductResearchDashboard() {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ refreshToken: token }),
         });
-        if (!response.ok) setAuthMessage("Sitzung lokal entfernt; der Server konnte das Token nicht bestätigen.");
+        if (!response.ok && localTokenCleared) setAuthMessage("Sitzung lokal entfernt; der Server konnte das Token nicht bestätigen.");
       }
     } catch {
-      setAuthMessage("Sitzung lokal entfernt; der Server war zum Widerrufen nicht erreichbar.");
+      if (localTokenCleared) setAuthMessage("Sitzung lokal entfernt; der Server war zum Widerrufen nicht erreichbar.");
     } finally {
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-      setAccessToken(null);
-      setRefreshToken(null);
-      setSearchResults([]);
-      setHasMoreResults(false);
-      setActiveQuery("");
       setAuthBusy(false);
     }
   };
@@ -222,6 +242,7 @@ export default function ProductResearchDashboard() {
   const runSearch = async (offset = 0, existingToken = accessToken) => {
     const searchQuery = (offset > 0 ? activeQuery : query).trim();
     if (!existingToken || !searchQuery) return;
+    const requestId = ++searchRequestId.current;
     if (offset === 0) {
       setSearchResults([]);
       setHasMoreResults(false);
@@ -237,6 +258,7 @@ export default function ProductResearchDashboard() {
       });
       if (response.status === 401 && refreshToken) {
         const renewed = await renewSession(refreshToken);
+        if (requestId !== searchRequestId.current) return;
         if (renewed) {
           token = renewed.accessToken;
           response = await requestJson("/v1/admin/web-search", {
@@ -246,11 +268,14 @@ export default function ProductResearchDashboard() {
           });
         }
       }
+      if (requestId !== searchRequestId.current) return;
       if (!response.ok) {
-        setSearchMessage(await readError(response));
+        const message = await readError(response);
+        if (requestId === searchRequestId.current) setSearchMessage(message);
         return;
       }
       const page = await response.json() as SearchPage;
+      if (requestId !== searchRequestId.current) return;
       if (!Array.isArray(page.results)) throw new Error("invalid search response");
       setActiveQuery(page.query);
       setPageOffset(offset);
@@ -260,9 +285,11 @@ export default function ProductResearchDashboard() {
         return [...new Map(all.map((item) => [item.id, item])).values()];
       });
     } catch {
-      setSearchMessage("Suche fehlgeschlagen. Prüfe die Verbindung und versuche es erneut.");
+      if (requestId === searchRequestId.current) {
+        setSearchMessage("Suche fehlgeschlagen. Prüfe die Verbindung und versuche es erneut.");
+      }
     } finally {
-      setSearchBusy(false);
+      if (requestId === searchRequestId.current) setSearchBusy(false);
     }
   };
 
