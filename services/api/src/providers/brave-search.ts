@@ -173,9 +173,27 @@ export class BraveSearchClient {
   private async withRateLimit<T>(operation: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     const previous = this.queue;
     let release!: () => void;
-    this.queue = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
+    const slot = new Promise<void>((resolve) => { release = resolve; });
+    // An aborted waiter can release its slot early without overtaking an active request.
+    this.queue = previous.then(() => slot);
     try {
+      if (signal?.aborted) throw new ProviderHttpError("Provider request was aborted or timed out");
+      if (signal) {
+        await new Promise<void>((resolve, reject) => {
+          const onAbort = () => {
+            signal.removeEventListener("abort", onAbort);
+            reject(new ProviderHttpError("Provider request was aborted or timed out"));
+          };
+          signal.addEventListener("abort", onAbort, { once: true });
+          void previous.then(() => {
+            signal.removeEventListener("abort", onAbort);
+            resolve();
+          });
+          if (signal.aborted) onAbort();
+        });
+      } else {
+        await previous;
+      }
       const waitMs = Math.max(0, this.nextRequestAt - Date.now());
       await this.wait(waitMs, signal);
       if (signal?.aborted) throw new ProviderHttpError("Provider request was aborted or timed out");
