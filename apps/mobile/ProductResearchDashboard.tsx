@@ -256,6 +256,7 @@ export default function ProductResearchDashboard() {
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
         body: JSON.stringify({ query: searchQuery, count: 10, offset }),
       });
+      if (requestId !== searchRequestId.current) return;
       if (response.status === 401 && refreshToken) {
         const renewed = await renewSession(refreshToken);
         if (requestId !== searchRequestId.current) return;
