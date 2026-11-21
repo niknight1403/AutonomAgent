@@ -67,6 +67,19 @@ describe("BraveSearchClient", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("stops pagination at the last supported provider offset", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(braveResponse({
+      query: { more_results_available: true },
+      web: { results: [{ title: "Last page", url: "https://example.com/last" }] },
+    })));
+    const client = new BraveSearchClient("server-only-test-key", 0);
+
+    await expect(client.search({ query: "camera", offset: 9 })).resolves.toMatchObject({
+      moreResultsAvailable: false,
+      results: [{ title: "Last page" }],
+    });
+  });
+
   it("backs off once on HTTP 429 using the provider reset header", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(braveResponse({}, 429, { "x-ratelimit-reset": "0, 1800" }))
