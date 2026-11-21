@@ -11,7 +11,7 @@ Diese zehn kleinen, prüfbaren Schritte verbessern die vorhandene read-only-Such
 | 54 | Quellenlinks mit ungewöhnlichen HTTPS-Ports ausschließen | Provider-Test |
 | 55 | Weitere Tracking-Parameter aus Quellenlinks entfernen | Provider-Test |
 | 56 | Fehlerhafte Ergebnisstruktur als Providerfehler melden; fehlende Web-Treffer weiterhin als leeres Ergebnis behandeln | Provider-Test |
-| 57 | Abgebrochene Retry-Wartezeit ohne weiteren Provideraufruf beenden | Provider-Test |
+| 57 | Abgebrochene Retry- und Warteschlangen-Anfragen ohne weiteren Provideraufruf beenden; Reihenfolge erhalten | Provider-Tests |
 | 58 | Mobilclient auf die unterstützten zehn Suchseiten begrenzen | Typecheck und Android-Export |
 | 59 | Eingabe-, Seiten- und Anmeldelimitfehler verständlich anzeigen | Typecheck und Android-Export |
 | 60 | Suche über die Android-Suchtaste auslösen | Typecheck und Android-Export |
