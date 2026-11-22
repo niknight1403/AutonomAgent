@@ -1,7 +1,7 @@
 # TODO
 
 ## Lokale Demo-Produktentdeckung und Katalog
-**Status: umgesetzt** – Das mobile Dashboard zeigt nach explizitem Start lokale Produktkandidaten und ihre Beispielwerte.
+**Status: umgesetzt** – Das mobile Dashboard zeigt nach explizitem Start lokale Produktkandidaten und ihre Beispielwerte neben der separat geschützten Websuche.
 - Die App muss einen Produktkatalog und eine Produktentdeckung für den sicheren Deutschland/EU-Prototyp mit Demo- oder Mock-Daten anzeigen.
 - Demo-Kandidaten müssen als Demo gekennzeichnet sein; das Auslösen der Entdeckung darf keine externen Anbieteraufrufe ausführen.
 
@@ -17,12 +17,12 @@
 - Jeder vorgeschlagene nächste Schritt muss in einer Freigabe-Warteschlange verbleiben und darf nicht automatisch ausgeführt werden.
 
 ## Reichweiten- und Marketingempfehlungen
-**Status: umgesetzt** – Kanalideen und illustrative Wochen-Spannen sind sichtbar gekennzeichnet.
+**Status: teilweise umgesetzt** – Eine qualitative Kanalidee ist als Demo gekennzeichnet; illustrative Wochen-Spannen werden noch nicht erzeugt.
 - Die Demo muss Reichweiten-/Marketingempfehlungen für generische Kanaltypen darstellen.
 - Reichweitenwerte müssen sichtbar als illustrative Demo-Spannen und nicht als gemessene Performance oder Anbieter-Metrik gekennzeichnet sein.
 
 ## Sicherheitsgrenzen und Projektstatus
-**Status: umgesetzt** – Der Lauf ist explizit, lokal und deterministisch; PAPER bleibt aktiv, LIVE ist deaktiviert und der Backendstatus bleibt sichtbar nicht verbunden.
+**Status: umgesetzt** – Der lokale Lauf ist explizit und deterministisch; PAPER bleibt aktiv und LIVE ist deaktiviert. Der Backendstatus wird unabhängig von der Demo anhand der echten API-Verbindung angezeigt.
 - Der Autopilot muss eine explizit gestartete, deterministische Demo-Pipeline sein; er darf keine Hintergrundjobs, externen Anbieteraufrufe, Käufe oder Veröffentlichungen starten.
 - PAPER/Demo muss Standard bleiben und LIVE-Trading deaktiviert sein.
 - Die bestehende UI muss den Backendstatus als nicht verbunden darstellen, bis es eine echte sichere Integration gibt.
