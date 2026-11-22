@@ -72,3 +72,4 @@ export * from "./research-pipeline.js";
 export * from "./backtest-optimization.js";
 
 export * from "./live-paper-simulation.js";
+export * from "./autopilot.js";

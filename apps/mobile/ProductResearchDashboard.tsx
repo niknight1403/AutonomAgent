@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Linking, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import * as SecureStore from "expo-secure-store";
+import { runLocalDemo, type DemoResult } from "@autonomagent/trading-core";
 
 type ApiStatus = {
   state: "HEALTHY" | "DEGRADED";
@@ -90,6 +91,7 @@ export default function ProductResearchDashboard() {
   const [hasMoreResults, setHasMoreResults] = useState(false);
   const [pageOffset, setPageOffset] = useState(0);
   const [activeQuery, setActiveQuery] = useState("");
+  const [demoResults, setDemoResults] = useState<DemoResult[] | null>(null);
 
   const refreshApiStatus = useCallback(async () => {
     setRefreshingStatus(true);
@@ -315,6 +317,26 @@ export default function ProductResearchDashboard() {
             <Text style={styles.textButtonLabel}>{refreshingStatus ? "Wird aktualisiert …" : "Status aktualisieren"}</Text>
           </Pressable>
         </Panel>
+
+        <Text style={styles.section}>Lokale Produktdemo</Text>
+        <Panel>
+          <Text style={styles.note}>Beispielpreise aus der App. Ohne Anmeldung, Anbieterabfrage, Kauf oder Veröffentlichung.</Text>
+          <Pressable accessibilityRole="button" onPress={() => setDemoResults(runLocalDemo())} style={styles.secondaryButton}>
+            <Text style={styles.buttonLabel}>Demo-Entdeckung starten</Text>
+          </Pressable>
+          {demoResults ? <Text style={styles.smallNote}>PAPER · {demoResults.length} lokale Beispielkandidaten · keine echten Angebote</Text> : null}
+        </Panel>
+        {demoResults?.map((result) => (
+          <Panel key={result.candidate.id}>
+            <Text style={styles.cardTitle}>{result.candidate.title} · DEMO</Text>
+            <Text style={styles.note}>Beispiel: Einkauf {(Number(result.candidate.buyPriceCents) / 100).toFixed(2)} € · möglicher Verkauf {(Number(result.candidate.resalePriceCents) / 100).toFixed(2)} €</Text>
+            <Text style={styles.note}>Rechnerisches Netto nach Beispielkosten: {(Number(result.netProfitCents) / 100).toFixed(2)} € · ROI {result.roiBasisPoints === null ? "nicht berechenbar" : `${(Number(result.roiBasisPoints) / 100).toFixed(1)} %`}</Text>
+            <Text style={styles.note}>Status: {result.approval === "REJECTED" ? "Abgelehnt" : "Freigabe ausstehend"}</Text>
+            {result.rejectionReasons.map((reason) => <Text key={reason} style={styles.errorText}>Risikoregel: {reason}</Text>)}
+            {result.listingDrafts.map((draft) => <Text key={draft.channel} style={styles.note}>{draft.channel} · Entwurf, unveröffentlicht: {draft.text}</Text>)}
+            <Text style={styles.smallNote}>{result.reachIdea}</Text>
+          </Panel>
+        ))}
 
         <Text style={styles.section}>Anmeldung</Text>
         <Panel>

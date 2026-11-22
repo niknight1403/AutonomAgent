@@ -6,6 +6,7 @@ AutonomAgent is an Android-first Expo/React Native application and TypeScript AP
 
 - **Operating mode:** PAPER; live trading is disabled and rejected by API configuration.
 - **Mobile:** status dashboard, password login, rotating sessions, and ADMIN-gated read-only web research.
+- **Local demo:** an explicitly started, deterministic product example evaluates sample costs and risks, creates unpublished listing drafts and reach ideas, and leaves acceptable examples awaiting review. Sample prices are invented and never sent to a provider.
 - **Search:** Brave Web Search returns source leads. Search snippets are not verified product prices, inventory, shipping costs, fees, or offers.
 - **Persistence:** PostgreSQL/Prisma stores users, reviewable deal candidates, sessions, and audit records. Web-search leads are not persisted.
 - **Payments and commerce:** Stripe/Digistore24 checkout, procurement, marketplace purchases, listing publication, and payouts are not implemented or enabled. HubSpot synchronization is not implemented.

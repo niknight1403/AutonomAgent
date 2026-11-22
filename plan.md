@@ -1,5 +1,7 @@
 # Implementierungsplan: sicherer Produkt- und Reichweiten-Demoablauf
 
+Stand 22.11.2026: Die lokale Demo ist neben der bereits vorhandenen authentifizierten Websuche integriert. Der angezeigte API-Status zeigt deren tatsächliche Verbindung; die Demo selbst bleibt offline. Reichweiten-Spannen sind noch offen, derzeit gibt es nur qualitative Ideen.
+
 ## Umfang
 
 Für den bestätigten sicheren Standardumfang entsteht ein Deutschland/EU-orientierter Prototyp mit Demo-Daten: Produktkatalog und lokale Demo-Produktentdeckung, Profit- und Risikobewertung, kanalbezogene Listing-Entwürfe sowie Reichweiten-/Marketingempfehlungen. Es gibt keine externen Anbieteraufrufe, keine Käufe und keine Veröffentlichungen. Jeder vorgeschlagene nächste Schritt bleibt als Entwurf in einer Freigabe-Warteschlange; LIVE-Trading bleibt deaktiviert.
