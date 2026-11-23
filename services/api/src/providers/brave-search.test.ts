@@ -3,6 +3,7 @@ import { BraveSearchClient } from "./brave-search.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 function braveResponse(body: unknown, status = 200, headers: Record<string, string> = {}) {
@@ -88,6 +89,112 @@ describe("BraveSearchClient", () => {
 
     const client = new BraveSearchClient("server-only-test-key", 0);
     await expect(client.search({ query: "headphones" })).resolves.toMatchObject({ results: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("normalizes search terms and excludes local, custom-port and tracked links", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(braveResponse({ web: { results: [
+      { title: "Local", url: "https://localhost/item" },
+      { title: "Address", url: "https://192.168.0.1/item" },
+      { title: "Custom port", url: "https://shop.example:8443/item" },
+      { title: "Tracked", url: "https://shop.example/item?msclkid=secret&sku=1" },
+    ] } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const page = await new BraveSearchClient("server-only-test-key", 0).search({ query: "  usb   kamera  " });
+    expect(new URL(fetchMock.mock.calls[0][0] as string).searchParams.get("q")).toBe("usb kamera");
+    expect(page.results.map((result) => result.url)).toEqual(["https://shop.example/item?sku=1"]);
+  });
+
+  it("rejects loopback, private, single-label and credential-bearing source links", async () => {
+    const rejected = [
+      "https://127.0.0.1/item",
+      "https://10.0.0.5/item",
+      "https://192.168.0.1/item",
+      "https://172.16.4.9/item",
+      "https://[::1]/item",
+      "https://localhost/item",
+      "https://printer.local/item",
+      "https://service.internal/item",
+      "https://nas.lan/item",
+      "https://2130706433/item",
+      "https://0x7f000001/item",
+      "https://127.1/item",
+      "https://user:pass@shop.example/item",
+      "https://shop.example:8443/item",
+    ];
+    const fetchMock = vi.fn().mockResolvedValue(braveResponse({ web: { results: [
+      ...rejected.map((url, index) => ({ title: `Rejected ${index}`, url })),
+      { title: "Allowed", url: "https://shop.example.co.uk/item" },
+    ] } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const page = await new BraveSearchClient("server-only-test-key", 0).search({ query: "camera" });
+    expect(page.results.map((result) => result.url)).toEqual(["https://shop.example.co.uk/item"]);
+  });
+
+  it("strips common tracking parameters without touching product parameters", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(braveResponse({ web: { results: [
+      {
+        title: "Tracked",
+        url: "https://shop.example/item?utm_source=x&utm_medium=y&fbclid=1&gclid=2&dclid=3&msclkid=4&yclid=5&twclid=6&igshid=7&_ga=8&_gl=9&ref=10&ref_src=11&si=12&sku=ABC-1",
+      },
+    ] } })));
+
+    const page = await new BraveSearchClient("server-only-test-key", 0).search({ query: "kamera" });
+    expect(page.results[0]?.url).toBe("https://shop.example/item?sku=ABC-1");
+  });
+
+  it("refuses an already aborted request without contacting the provider", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const abort = new AbortController();
+    abort.abort();
+
+    await expect(new BraveSearchClient("server-only-test-key", 0).search({ query: "camera" }, abort.signal))
+      .rejects.toThrow(/aborted/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed provider payloads rather than showing empty results", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(braveResponse({ web: {} })));
+    await expect(new BraveSearchClient("server-only-test-key", 0).search({ query: "camera" }))
+      .rejects.toThrow(/invalid search results/);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(braveResponse({ query: {} })));
+    await expect(new BraveSearchClient("server-only-test-key", 0).search({ query: "rare item" }))
+      .resolves.toMatchObject({ results: [] });
+  });
+
+  it("aborts a rate-limit backoff without making another provider request", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn().mockResolvedValue(braveResponse({}, 429, { "retry-after": "30" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const abort = new AbortController();
+    const pending = new BraveSearchClient("server-only-test-key", 0).search({ query: "camera" }, abort.signal);
+    const rejection = expect(pending).rejects.toThrow(/aborted/);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    abort.abort();
+    await rejection;
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("aborts a queued search promptly without letting the next search overtake the active one", async () => {
+    let finishFirst!: (response: Response) => void;
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValue(braveResponse({ web: { results: [] } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = new BraveSearchClient("server-only-test-key", 0);
+    const first = client.search({ query: "first" });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const abort = new AbortController();
+    const second = client.search({ query: "second" }, abort.signal);
+    const rejected = expect(second).rejects.toThrow(/aborted/);
+    const third = client.search({ query: "third" });
+    abort.abort();
+    await rejected;
+    expect(fetchMock).toHaveBeenCalledOnce();
+    finishFirst(braveResponse({ web: { results: [] } }));
+    await Promise.all([first, third]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
