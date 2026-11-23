@@ -145,7 +145,7 @@ export class BraveSearchClient {
     return {
       query,
       results,
-      moreResultsAvailable: isRecord(response.query) && response.query.more_results_available === true,
+      moreResultsAvailable: offset < 9 && isRecord(response.query) && response.query.more_results_available === true,
     };
   }
 
