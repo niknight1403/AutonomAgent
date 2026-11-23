@@ -59,6 +59,10 @@ function errorMessage(code: unknown): string {
     case "BRAVE_SEARCH_NOT_CONFIGURED": return "Die Brave-Suche ist serverseitig noch nicht eingerichtet.";
     case "WEB_SEARCH_RATE_LIMITED": return "Die Suchanfrage wurde begrenzt. Bitte warte kurz und versuche es erneut.";
     case "WEB_SEARCH_PROVIDER_UNAVAILABLE": return "Der Suchdienst ist momentan nicht erreichbar.";
+    case "WEB_SEARCH_INPUT_INVALID":
+    case "WEB_SEARCH_QUERY_INVALID": return "Prüfe den Suchbegriff und versuche es erneut.";
+    case "WEB_SEARCH_OFFSET_INVALID": return "Die letzte verfügbare Ergebnisseite ist erreicht.";
+    case "AUTH_RATE_LIMITED": return "Zu viele Anmeldeversuche. Bitte warte kurz.";
     case "AUTH_SIGNING_SECRET_NOT_CONFIGURED": return "Die sichere Anmeldung ist serverseitig noch nicht eingerichtet.";
     default: return "Anfrage fehlgeschlagen. Prüfe die API-Verbindung und versuche es erneut.";
   }
@@ -92,8 +96,11 @@ export default function ProductResearchDashboard() {
   const [activeQuery, setActiveQuery] = useState("");
   const searchRequestId = useRef(0);
   const sessionEpoch = useRef(0);
+  const statusRequestInFlight = useRef(false);
 
   const refreshApiStatus = useCallback(async () => {
+    if (statusRequestInFlight.current) return;
+    statusRequestInFlight.current = true;
     setRefreshingStatus(true);
     try {
       const response = await requestJson("/api/status");
@@ -109,6 +116,7 @@ export default function ProductResearchDashboard() {
         : "Backend derzeit nicht erreichbar";
       setApiStatus({ status: "offline", message });
     } finally {
+      statusRequestInFlight.current = false;
       setRefreshingStatus(false);
     }
   }, []);
@@ -240,6 +248,7 @@ export default function ProductResearchDashboard() {
   };
 
   const runSearch = async (offset = 0, existingToken = accessToken) => {
+    if (offset > 9 || (offset > 0 && !hasMoreResults)) return;
     const searchQuery = (offset > 0 ? activeQuery : query).trim();
     if (!existingToken || !searchQuery) return;
     const requestId = ++searchRequestId.current;
@@ -339,7 +348,7 @@ export default function ProductResearchDashboard() {
               {apiStatus.status === "offline" ? `${apiStatus.message}. Adresse: ${API_BASE_URL}` : `Verbinde mit ${API_BASE_URL}`}
             </Text>
           )}
-          <Pressable accessibilityRole="button" onPress={() => void refreshApiStatus()} style={styles.textButton}>
+          <Pressable accessibilityRole="button" disabled={refreshingStatus} onPress={() => void refreshApiStatus()} style={styles.textButton}>
             <Text style={styles.textButtonLabel}>{refreshingStatus ? "Wird aktualisiert …" : "Status aktualisieren"}</Text>
           </Pressable>
         </Panel>
@@ -399,6 +408,8 @@ export default function ProductResearchDashboard() {
                 value={query}
                 onChangeText={setQuery}
                 maxLength={600}
+                returnKeyType="search"
+                onSubmitEditing={() => { if (!searchBusy && query.trim()) void runSearch(0); }}
                 style={styles.input}
               />
               <Pressable accessibilityRole="button" disabled={searchBusy || !query.trim()} onPress={() => void runSearch(0)} style={styles.primaryButton}>
