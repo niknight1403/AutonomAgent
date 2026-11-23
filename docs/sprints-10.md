@@ -1,4 +1,23 @@
-# Einundfünfzig Ergebnis-Sprints: AutonomAgent
+# Einundsechzig Ergebnis-Sprints: AutonomAgent
+
+## Fortsetzung: Sprints 52–61 (Produktrecherche)
+
+Diese zehn kleinen, prüfbaren Schritte verbessern die vorhandene read-only-Suche; sie erweitern keine Handels- oder Anbieterrechte.
+
+| Sprint | Ergebnis | Status und Nachweis |
+|---|---|---|
+| 52 | Mehrfache Leerzeichen in Suchbegriffen normalisieren | Erledigt – Provider-Test prüft `q="usb kamera"`; leere oder überlange Anfragen bleiben abgelehnt |
+| 53 | Lokale Hostnamen und numerische IP-Adressen aus Quellenlinks ausschließen | Erledigt – Test deckt `localhost`, `.local`, `.internal`, `.lan`, IPv4, IPv6, Dezimal- und Hex-IP sowie eingebettete Zugangsdaten ab |
+| 54 | Quellenlinks mit ungewöhnlichen HTTPS-Ports ausschließen | Erledigt – explizite Ports werden verworfen, Standard-HTTPS bleibt erlaubt |
+| 55 | Weitere Tracking-Parameter aus Quellenlinks entfernen | Erledigt – `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `yclid`, `twclid`, `igshid`, `_ga`, `_gl`, `ref`, `ref_src`, `si` entfernt, Produktparameter bleiben erhalten |
+| 56 | Fehlerhafte Ergebnisstruktur als Providerfehler melden; fehlende Web-Treffer weiterhin als leeres Ergebnis behandeln | Erledigt – `web: {}` schlägt fehl, fehlendes `web` liefert ein leeres Ergebnis |
+| 57 | Abgebrochene Retry- und Warteschlangen-Anfragen ohne weiteren Provideraufruf beenden; Reihenfolge erhalten | Erledigt – Abbruch vor dem Aufruf, im 429-Backoff und in der Warteschlange getestet; nachfolgende Suche überholt die aktive nicht |
+| 58 | Mobilclient auf die unterstützten zehn Suchseiten begrenzen | Erledigt – Offset-Grenze und `moreResultsAvailable`-Guard im Client; Typecheck und Android-Export |
+| 59 | Eingabe-, Seiten- und Anmeldelimitfehler verständlich anzeigen | Erledigt – `WEB_SEARCH_INPUT_INVALID`, `WEB_SEARCH_QUERY_INVALID`, `WEB_SEARCH_OFFSET_INVALID`, `AUTH_RATE_LIMITED` mit deutschen Hinweisen |
+| 60 | Suche über die Android-Suchtaste auslösen | Erledigt – `returnKeyType="search"` und `onSubmitEditing` lösen dieselbe Suche wie die Schaltfläche aus |
+| 61 | Mehrfache gleichzeitige Statusaktualisierung per Taste verhindern | Erledigt – Button deaktiviert und zusätzlicher In-Flight-Guard gegen Doppeltipp |
+
+Die API-/Core-Tests und Workspace-Typechecks prüfen die Codebasis; ein Android-Bundle-Export ist kein Gerätetest und keine APK-Freigabe. Datenbankabhängige Tests benötigen weiterhin PostgreSQL.
 
 **Grundlage:** öffentliches Repository `niknight1403/AutonomAgent`; beim Start gab es kein Sprint-Board und keine offenen GitHub-Issues. Die Abfolge bündelt die vorhandenen Refactoring-Befunde und den genehmigten sicheren Produktpilot. „Sprint“ bezeichnet hier ein prüfbares Ergebnis, nicht eine Kalenderwoche.
 
@@ -61,3 +80,7 @@ Die Sprints 2–6 ändern Kernverhalten mit Datenbankeffekten. Sie gelten erst a
 Für Sprint 10 prüft `.github/workflows/ci.yml` frisch installierte Abhängigkeiten, Prisma-Generierung/Validierung und Migrationen, Workspace-Build, Typechecks, Tests gegen PostgreSQL, `npm audit --audit-level=high` und einen Android-Expo-Bundle-Export. CI Run `43990674018` bestand alle Schritte. Der öffentliche Pre-release `v0.1.0` zeigt auf Commit `f8176e3603cce88ee40bd20379e249dd69869bca`; er ist ein Quellcode-Release, keine Produktionsfreigabe. Die moderate Expo-Toolchain-Restliste bleibt im Refactoring-Plan ausgewiesen; eine formelle Risikoausnahme oder Produktionsfreigabe wird dadurch nicht erteilt.
 
 Sprints 14–23 sind bewusst als reine Forschungsbausteine in `packages/trading-core/src/research-pipeline.ts` umgesetzt. Sie verändern keine API-Routen, Wallet-Operationen oder Providerfähigkeiten. Konfiguration, Ensemble, Kosten, Positionsgrößen, Exposure, Walk-forward-Splits, Benchmark und Fingerprint bleiben deterministisch; jeder zusammengesetzte Lauf trägt `paperOnly: true` und `liveExecutionEnabled: false`.
+
+## Prüfstand der Sprints 52–61
+
+Lokal ausgeführt auf dem Sprint-Branch: `npm run typecheck` (alle Workspaces), `npm test` (API- und Core-Suiten) und `npx expo export --platform android` in `apps/mobile`. PostgreSQL-abhängige Integrationstests laufen wie bisher nur mit erreichbarer Datenbank; ein Bundle-Export ist kein Gerätetest und keine APK-Freigabe. Die Sprints erweitern keine Handels-, Kauf- oder Veröffentlichungsrechte; PAPER bleibt der einzige Betriebsmodus.
