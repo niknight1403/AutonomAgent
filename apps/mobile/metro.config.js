@@ -9,10 +9,11 @@ const config = getDefaultConfig(__dirname);
 // explicit `.js` specifiers. Metro does not rewrite those back to the `.ts`
 // sources it bundles, so resolve them here. Without this the Android bundle
 // fails with "Unable to resolve module ./autopilot.js".
+const sharedRoot = path.resolve(__dirname, "../../packages/trading-core");
 const upstreamResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (moduleName.startsWith(".") && moduleName.endsWith(".js")) {
+  if (context.originModulePath.startsWith(sharedRoot + path.sep) && moduleName.startsWith(".") && moduleName.endsWith(".js")) {
     const importerDirectory = path.dirname(context.originModulePath);
     for (const extension of [".ts", ".tsx"]) {
       const candidate = path.resolve(
