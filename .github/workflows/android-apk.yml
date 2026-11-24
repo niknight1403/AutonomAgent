@@ -1,0 +1,49 @@
+name: Android APK
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/mobile/**'
+      - 'packages/**'
+      - 'package-lock.json'
+      - '.github/workflows/android-apk.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      EXPO_PUBLIC_API_URL: https://autonomagent-api.onrender.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - run: npm run typecheck --workspace @autonomagent/mobile
+      - name: Validate production endpoint
+        run: test "$EXPO_PUBLIC_API_URL" = "https://autonomagent-api.onrender.com"
+      - name: Generate Android project
+        working-directory: apps/mobile
+        run: npx expo prebuild --platform android --non-interactive
+      - name: Build installable test APK
+        working-directory: apps/mobile/android
+        run: bash gradlew assembleRelease --no-daemon
+      - name: Verify APK exists
+        run: |
+          test -s apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          sha256sum apps/mobile/android/app/build/outputs/apk/release/app-release.apk > apk-sha256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AutonomAgent-Android-test
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+            apk-sha256.txt
+          if-no-files-found: error
