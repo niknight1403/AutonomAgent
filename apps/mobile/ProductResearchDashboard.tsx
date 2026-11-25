@@ -99,7 +99,7 @@ export default function ProductResearchDashboard() {
       const response = await requestJson("/api/status");
       if (!response.ok) throw new Error("status request failed");
       const data = await response.json() as ApiStatus;
-      if (!data || !["HEALTHY", "DEGRADED"].includes(data.state) || !data.database) {
+      if (!data || !["HEALTHY", "DEGRADED"].includes(data.state) || !data.database || !data.workers || !data.integrations || typeof data.workers.state !== "string" || typeof data.workers.active !== "number" || typeof data.database.state !== "string") {
         throw new Error("invalid status response");
       }
       setApiStatus({ status: "online", data });
