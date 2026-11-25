@@ -15,6 +15,7 @@
     "extra": {
       "tradingMode": "PAPER",
       "liveTradingEnabled": false
-    }
+    },
+    "newArchEnabled": false
   }
 }
